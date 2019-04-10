@@ -1,0 +1,6 @@
+# Use the following lines if motorPhytron was built inside motor
+MOTOR=
+-include $(MOTOR)/configure/RELEASE
+# Use the following lines if motorPhytron was built outside motor
+#!MOTOR_PHYTRON=
+#!-include $(MOTOR_PHYTRON)/configure/RELEASE.local

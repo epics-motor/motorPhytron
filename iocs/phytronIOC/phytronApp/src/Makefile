@@ -5,6 +5,9 @@ include $(TOP)/configure/CONFIG
 #  ADD MACRO DEFINITIONS AFTER THIS LINE
 #=============================
 
+# The following are used for debugging messages.
+#!USR_CXXFLAGS += -DDEBUG
+
 #=============================
 # Build the IOC application
 
@@ -16,10 +19,21 @@ DBD += phytron.dbd
 phytron_DBD += base.dbd
 
 # Include dbd files from all support applications:
-#phytron_DBD += xxx.dbd
+#ifdef ASYN
+phytron_DBD += asyn.dbd
+#endif
+phytron_DBD += motorSupport.dbd
+phytron_DBD += devPhytron.dbd
 
 # Add all the support libraries needed by this IOC
-#phytron_LIBS += xxx
+phytron_LIBS += phytron
+phytron_LIBS += motor
+#ifdef ASYN
+phytron_LIBS += asyn
+#endif
+#ifdef SNCSEQ
+phytron_LIBS += seq pv
+#endif
 
 # phytron_registerRecordDeviceDriver.cpp derives from phytron.dbd
 phytron_SRCS += phytron_registerRecordDeviceDriver.cpp
