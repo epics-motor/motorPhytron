@@ -1,13 +1,10 @@
-#!../../bin/linux-x86_64/phytronAxis
-
-## You may have to change phytronAxis to something else
-## everywhere it appears in this file
+#!../../bin/linux-x86_64/phytron
 
 < envPaths
 
 ## Register all support components
-dbLoadDatabase("../../dbd/WithAsyn.dbd",0,0)
-WithAsyn_registerRecordDeviceDriver(pdbbase) 
+dbLoadDatabase("../../dbd/phytron.dbd",0,0)
+phytron_registerRecordDeviceDriver(pdbbase) 
 
 #drvAsynIPPortConfigure("testPort","localhost:8000",0,0,1)
 drvAsynIPPortConfigure("testRemote","10.5.1.181:22222",0,0,1)
