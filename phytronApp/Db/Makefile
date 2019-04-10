@@ -11,6 +11,9 @@ include $(TOP)/configure/CONFIG
 # Create and install (or just install) into <top>/db
 # databases, templates, substitutions like this
 #DB += xxx.db
+DB += Phytron_I1AM01.db
+DB += Phytron_MCM01.db
+DB += Phytron_motor.db
 
 #----------------------------------------------------
 # If <anyname>.db template is not named <anyname>*.template add

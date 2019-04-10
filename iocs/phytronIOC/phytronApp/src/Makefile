@@ -21,12 +21,13 @@ phytron_DBD += base.dbd
 # Include dbd files from all support applications:
 #ifdef ASYN
 phytron_DBD += asyn.dbd
+phytron_DBD += drvAsynIPPort.dbd
 #endif
 phytron_DBD += motorSupport.dbd
-phytron_DBD += devPhytron.dbd
+phytron_DBD += phytronSupport.dbd
 
 # Add all the support libraries needed by this IOC
-phytron_LIBS += phytron
+phytron_LIBS += phytronAxisMotor
 phytron_LIBS += motor
 #ifdef ASYN
 phytron_LIBS += asyn
