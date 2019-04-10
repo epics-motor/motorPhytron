@@ -7,6 +7,16 @@ include $(TOP)/configure/CONFIG
 #  Optimization of db files using dbst (DEFAULT: NO)
 #DB_OPT = YES
 
+ifdef MOTOR_PHYTRON
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_I1AM01.db
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_MCM01.db
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_motor.db
+else
+DB_INSTALLS += $(MOTOR)/db/Phytron_I1AM01.db
+DB_INSTALLS += $(MOTOR)/db/Phytron_MCM01.db
+DB_INSTALLS += $(MOTOR)/db/Phytron_motor.db
+endif
+
 #----------------------------------------------------
 # Create and install (or just install) into <top>/db
 # databases, templates, substitutions like this
