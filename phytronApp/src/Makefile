@@ -6,7 +6,7 @@ include $(TOP)/configure/CONFIG
 
 LIBRARY_IOC += phytronAxisMotor
 
-DBD += phytron.dbd
+DBD += phytronSupport.dbd
 
 # The following are compiled and added to the support library
 phytronAxisMotor_SRCS += phytronAxisMotor.cpp
