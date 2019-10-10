@@ -441,7 +441,7 @@ void phytronController::report(FILE *fp, int level)
   */
 phytronAxis* phytronController::getAxis(asynUser *pasynUser)
 {
-  return static_cast<phytronAxis*>(asynMotorController::getAxis(pasynUser));
+  return dynamic_cast<phytronAxis*>(asynMotorController::getAxis(pasynUser));
 }
 
 /** Returns a pointer to an phytronAxis object.
@@ -450,7 +450,7 @@ phytronAxis* phytronController::getAxis(asynUser *pasynUser)
   */
 phytronAxis* phytronController::getAxis(int axisNo)
 {
-  return static_cast<phytronAxis*>(asynMotorController::getAxis(axisNo));
+  return dynamic_cast<phytronAxis*>(asynMotorController::getAxis(axisNo));
 }
 
 /**
