@@ -106,6 +106,7 @@ private:
   phytronStatus setVelocity(double minVelocity, double maxVelocity, int moveType);
   phytronStatus setAcceleration(double acceleration, int movementType);
 
+  phytronStatus lastStatus;
   size_t response_len;
 
 friend class phytronController;
@@ -166,7 +167,7 @@ protected:
 
 private:
   double timeout_;
-
+  phytronStatus lastStatus;
 
 friend class phytronAxis;
 };

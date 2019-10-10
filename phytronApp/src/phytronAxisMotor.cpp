@@ -171,11 +171,15 @@ asynStatus phytronController::readInt32(asynUser *pasynUser, epicsInt32 *value)
     sprintf(this->outString_, "ST");
     phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &response_len);
     if(phyStatus){
-      asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
+      if (phyStatus != lastStatus) {
+        asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
           "phytronAxis::readInt32: Reading controller %s status failed with error "
           "code: %d\n", this->controllerName_, phyStatus);
+        lastStatus = phyStatus;
+      }
       return phyToAsyn(phyStatus);
     }
+    lastStatus = phyStatus;
 
     *value = atoi(this->inString_);
     return asynSuccess;
@@ -240,10 +244,14 @@ asynStatus phytronController::readInt32(asynUser *pasynUser, epicsInt32 *value)
 
   phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &pAxis->response_len);
   if(phyStatus){
-    asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
               "phytronAxis::readInt32: Failed with status %d for reason %d\n", phyStatus, pasynUser->reason);
+      lastStatus = phyStatus;
+    }
     return phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
 
   *value = atoi(this->inString_);
 
@@ -278,9 +286,12 @@ asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
     sprintf(this->outString_, "CR");
     phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &response_len);
     if(phyStatus){
-      asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
+      if (phyStatus != lastStatus) {
+        asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
           "phytronAxis::writeInt32: Reseting controller %s failed with error code: %d\n", this->controllerName_, phyStatus);
+      }
     }
+    lastStatus = phyStatus;
     resetAxisEncoderRatio();
     return phyToAsyn(phyStatus);
   } else if(pasynUser->reason == controllerStatusReset_){
@@ -288,9 +299,12 @@ asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
     sprintf(this->outString_, "STC");
     phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &response_len);
     if(phyStatus){
-     asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
+      if (phyStatus != lastStatus) {
+        asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
          "phytronAxis::writeInt32: Reseting controller %s failed with error code: %d\n", this->controllerName_, phyStatus);
+      }
     }
+    lastStatus = phyStatus;
     return phyToAsyn(phyStatus);
   }
   /*
@@ -361,10 +375,15 @@ asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
 
   phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &pAxis->response_len);
   if(phyStatus){
-    asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
+    phyStatus = phytronInvalidCommand;
+    if (phyStatus != lastStatus) {
+      asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
               "phytronAxis::writeInt32: Failed with status %d for reason %d\n", phyStatus, pasynUser->reason);
+      lastStatus = phyStatus;
+    }
     return phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
 
   return asynSuccess;
 }
@@ -395,10 +414,14 @@ asynStatus phytronController::readFloat64(asynUser *pasynUser, epicsFloat64 *val
 
   phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &pAxis->response_len);
   if(phyStatus){
-    asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != pAxis->lastStatus) {
+      asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
               "phytronAxis::readFloat64: Failed with status %d for reason %d\n", phyStatus, pasynUser->reason);
+      pAxis->lastStatus = phyStatus;
+    }
     return phyToAsyn(phyStatus);
   }
+  pAxis->lastStatus = phyStatus;
 
   *value = atof(this->inString_);
 
@@ -485,11 +508,16 @@ phytronStatus phytronController::sendPhytronCommand(const char *command, char *r
     char* nack_ack = strchr(buffer,0x02); //Find STX
     if(!nack_ack){
         nread=0;
-        asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
+        status = phytronInvalidReturn;
+        if (status != lastStatus) {
+          asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
           "%s: Communication failed\n",
           functionName);
-        return phytronInvalidReturn;
+        }
+        lastStatus = status;
+        return status;
     }
+    lastStatus = phytronSuccess;
     nack_ack++; //NACK/ACK is one
     //ACK, extract response
     if(*nack_ack==0x06){
@@ -508,11 +536,16 @@ phytronStatus phytronController::sendPhytronCommand(const char *command, char *r
     //NAK return error
     else if(*nack_ack==0x15){
         nread=0;
-        asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
+        status = phytronInvalidReturn;
+        if (status != lastStatus) {
+          asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
           "%s: Nack sent by the controller\n",
           functionName);
-        return phytronInvalidCommand;
+        }
+        lastStatus = status;
+        return status;
     }
+    lastStatus = phytronSuccess;
 
     return status;
 
@@ -701,20 +734,28 @@ asynStatus phytronAxis::move(double position, int relative, double minVelocity, 
   //NOTE: Check if velocity is different, before setting it.
   phyStatus = setVelocity(minVelocity, maxVelocity, stdMove);
   if(phyStatus){
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
               "phytronAxis::move: Setting the velocity for axis %d to %f failed with error "
               "code: %d!\n", axisNo_, maxVelocity, phyStatus);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
 
   //NOTE: Check if velocity is different, before setting it.
   phyStatus = setAcceleration(acceleration, stdMove);
   if(phyStatus){
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
               "phytronAxis::move: Setting the acceleration for axis %d to %f failed with "
               "error code: %d!\n", axisNo_, acceleration, phyStatus);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
 
   if (relative) {
     sprintf(pC_->outString_, "M%.1f%c%d", axisModuleNo_, position>0 ? '+':'-', abs(NINT(position)));
@@ -724,10 +765,14 @@ asynStatus phytronAxis::move(double position, int relative, double minVelocity, 
 
   phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
   if(phyStatus){
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
               "phytronAxis::move: Moving axis %d failed with error code: %d!\n", axisNo_, phyStatus);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
 
   return asynSuccess;
 }
@@ -747,19 +792,27 @@ asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acce
 
   phyStatus =  setVelocity(minVelocity, maxVelocity, homeMove);
   if(phyStatus){
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
         "phytronAxis::home: Setting the velocity for axis %d to %f failed with error "
         "code: %d!\n", axisNo_, maxVelocity, phyStatus);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
 
   phyStatus =  setAcceleration(acceleration, homeMove);
   if(phyStatus){
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
         "phytronAxis::home: Setting the acceleration for axis %d to %f failed with "
         "error code: %d!\n", axisNo_, acceleration, phyStatus);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
 
   if(forwards){
     if(homingType == limit) sprintf(pC_->outString_, "M%.1fR+", axisModuleNo_);
@@ -841,18 +894,25 @@ asynStatus phytronAxis::stop(double acceleration)
   phyStatus = setAcceleration(acceleration, stopMove);
 
   if(phyStatus){
-  asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
             "phytronAxis::stop: Setting the acceleration for axis %d to %f failed with "
             "error code: %d!\n", axisNo_, acceleration, phyStatus);
+    }
   }
+  lastStatus = phyStatus;
 
   sprintf(pC_->outString_, "M%.1fS", axisModuleNo_);
   phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
   if(phyStatus){
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
               "phytronAxis::stop: Stopping axis %d failed with error code: %d!\n", axisNo_, phyStatus);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
 
   return asynSuccess;
 }
@@ -865,11 +925,14 @@ asynStatus phytronAxis::setEncoderRatio(double ratio){
   sprintf(pC_->outString_, "M%.1fP39=%f", axisModuleNo_, 1/ratio);
   phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
   if(phyStatus){
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
               "phytronAxis::setEncoderRatio: Failed for axis %d with status %d!\n", axisNo_, phyStatus);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
-
+  lastStatus = phyStatus;
 
   return asynSuccess;
 }
@@ -891,10 +954,14 @@ asynStatus phytronAxis::setPosition(double position)
   sprintf(pC_->outString_, "M%.1fP20=%f", axisModuleNo_, position);
   phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
   if(phyStatus){
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
               "phytronAxis::setPosition: Setting position %f on axis %d failed with error code: %d!\n", position, axisNo_, phyStatus);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
 
   return asynSuccess;
 }
@@ -920,10 +987,14 @@ asynStatus phytronAxis::poll(bool *moving)
   if(phyStatus){
     setIntegerParam(pC_->motorStatusProblem_, 1);
     callParamCallbacks();
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
              "phytronAxis::poll: Reading axis position failed for axis: %d!\n", axisNo_);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
   position = atof(pC_->inString_);
   setDoubleParam(pC_->motorPosition_, position);
 
@@ -933,10 +1004,14 @@ asynStatus phytronAxis::poll(bool *moving)
   if(phyStatus){
     setIntegerParam(pC_->motorStatusProblem_, 1);
     callParamCallbacks();
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
              "phytronAxis::poll: Reading encoder value failed for axis: %d!\n", axisNo_);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
   encoderPosition = atof(pC_->inString_);
 
   /*
@@ -953,10 +1028,14 @@ asynStatus phytronAxis::poll(bool *moving)
   if(phyStatus){
     setIntegerParam(pC_->motorStatusProblem_, 1);
     callParamCallbacks();
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
               "phytronAxis::poll: Reading axis moving status failed for axis: %d!\n", axisNo_);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
   *moving = (pC_->inString_[0] == 'E') ? 0:1;
   setIntegerParam(pC_->motorStatusDone_, !*moving);
 
@@ -965,10 +1044,14 @@ asynStatus phytronAxis::poll(bool *moving)
   if(phyStatus){
     setIntegerParam(pC_->motorStatusProblem_, 1);
     callParamCallbacks();
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
+    if (phyStatus != lastStatus) {
+      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
              "phytronAxis::poll: Reading axis status failed for axis: %d!\n", axisNo_);
+      lastStatus = phyStatus;
+    }
     return pC_->phyToAsyn(phyStatus);
   }
+  lastStatus = phyStatus;
   axisStatus = atoi(pC_->inString_);
   setIntegerParam(pC_->motorStatusHighLimit_, (axisStatus & 0x10)/0x10);
   setIntegerParam(pC_->motorStatusLowLimit_, (axisStatus & 0x20)/0x20);
