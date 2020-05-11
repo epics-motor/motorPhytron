@@ -1,5 +1,19 @@
 # motorPhytron Releases
 
+## __R1-1 (2020-05-11)__
+R1-1 is a release based on the master branch.  
+
+### Changes since R1-0
+
+#### New features
+* None
+
+#### Modifications to existing features
+* Pull request [#1](https://github.com/epics-motor/motorPhytron/pull/1): Only print error messages on status changes
+
+#### Bug fixes
+* Commit [72281de](https://github.com/epics-motor/motorPhytron/commit/72281de83391d838f3d0709cb0205a4fa055c426): Include ``$(MOTOR)/modules/RELEASE.$(EPICS_HOST_ARCH).local`` instead of ``$(MOTOR)/configure/RELEASE``
+
 ## __R1-0 (2019-04-18)__
 R1-0 is a release based on the master branch.  
 
