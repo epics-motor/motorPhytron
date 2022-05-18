@@ -786,10 +786,13 @@ asynStatus phytronAxis::move(double position, int relative, double minVelocity, 
 asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acceleration, int forwards)
 {
   phytronStatus phyStatus;
-  int           homingType;
-
+  int homingType;
+  
   pC_->getIntegerParam(axisNo_, pC_->homingProcedure_, &homingType);
-
+  if(homingType==limit) {
+      homeForward = forwards;
+      homeState = 1;
+  }
   phyStatus =  setVelocity(minVelocity, maxVelocity, homeMove);
   if(phyStatus){
     if (phyStatus != lastStatus) {
@@ -1053,8 +1056,41 @@ asynStatus phytronAxis::poll(bool *moving)
   }
   lastStatus = phyStatus;
   axisStatus = atoi(pC_->inString_);
-  setIntegerParam(pC_->motorStatusHighLimit_, (axisStatus & 0x10)/0x10);
-  setIntegerParam(pC_->motorStatusLowLimit_, (axisStatus & 0x20)/0x20);
+
+// workaround for home on limit switch
+  if(homeState==0) {
+      setIntegerParam(pC_->motorStatusHighLimit_, (axisStatus & 0x10)/0x10);
+      setIntegerParam(pC_->motorStatusLowLimit_, (axisStatus & 0x20)/0x20);
+  }
+  else {    // homing was started
+    if(homeForward) {
+        setIntegerParam(pC_->motorStatusLowLimit_, (axisStatus & 0x20)/0x20);
+    }
+    else {
+        setIntegerParam(pC_->motorStatusHighLimit_, (axisStatus & 0x10)/0x10);
+    }
+    switch(homeState) {
+        case 1: // home started wait for moving
+            if(*moving)
+                homeState = 2;
+            break;
+        case 2: // wait for move done
+        case 3: // tell record about limit reached
+        case 4:
+            if(! (*moving)) {
+                homeState++;
+                if(homeForward)
+                    setIntegerParam(pC_->motorStatusHighLimit_, 1);
+                else
+                    setIntegerParam(pC_->motorStatusLowLimit_, 1);
+            }
+            if( homeState==4 ) 
+                homeState = 0;
+            break;
+    }
+  }
+// workaround  END
+
   setIntegerParam(pC_->motorStatusAtHome_, (axisStatus & 0x40)/0x40);
 
   setIntegerParam(pC_->motorStatusHomed_, (axisStatus & 0x08)/0x08);
@@ -1085,7 +1121,7 @@ static const iocshArg phytronCreateControllerArg0 = {"Port name", iocshArgString
 static const iocshArg phytronCreateControllerArg1 = {"PhytronAxis port name", iocshArgString};
 static const iocshArg phytronCreateControllerArg2 = {"Moving poll period (ms)", iocshArgInt};
 static const iocshArg phytronCreateControllerArg3 = {"Idle poll period (ms)", iocshArgInt};
-static const iocshArg phytronCreateControllerArg4 = {"Idle poll period (ms)", iocshArgDouble};
+static const iocshArg phytronCreateControllerArg4 = {"Timeout (ms)", iocshArgDouble};
 static const iocshArg * const phytronCreateControllerArgs[] = {&phytronCreateControllerArg0,
                                                              &phytronCreateControllerArg1,
                                                              &phytronCreateControllerArg2,
