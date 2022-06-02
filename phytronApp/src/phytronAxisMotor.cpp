@@ -714,7 +714,7 @@ phytronStatus phytronAxis::setAcceleration(double acceleration, int moveType)
   } else if(moveType == homeMove){
     sprintf(pC_->outString_, "M%.1fP09=%f", axisModuleNo_, acceleration);
   } else if (moveType == stopMove){
-    sprintf(pC_->outString_, "M%.1fP07=%f", axisModuleNo_, acceleration);
+    sprintf(pC_->outString_, "M%.1fP15=%f", axisModuleNo_, acceleration);
   }
 
   return pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
