@@ -109,6 +109,10 @@ private:
   phytronStatus lastStatus;
   size_t response_len;
 
+  // Workaround for homing type limit
+  int homeForward;
+  int homeState;
+
 friend class phytronController;
 };
 
