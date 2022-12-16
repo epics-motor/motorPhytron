@@ -696,6 +696,12 @@ record(bi, "$(P)$(M)-PWR-STAGE-MODE_GET")
 # 6: SSI Gray code 5.5V
 # 7: EnDat 5.0V
 # 8: EnDat 5.5V
+# 9: resolver
+# 10: LVDT 4-wire
+# 11: LVDT 5/6-wire
+# 12: BiSS 5.0 V
+# 13: BiSS 24.0 V
+
 ################################################################################
 record(mbbo, "$(P)$(M)-ENC-TYP_SET")
 {
@@ -720,6 +726,16 @@ record(mbbo, "$(P)$(M)-ENC-TYP_SET")
     field(SVVL, "7")
     field(EIST, "EnDat 5.5V")
     field(EIVL, "8")
+    field(NIST, "resolver")
+    field(NIVL, "9")
+    field(TEST, "LVDT 4-wire")
+    field(TEVL, "10")
+    field(ELST, "LVDT 5/6-wire")
+    field(ELVL, "11")
+    field(TVST, "BiSS 5.0 V")
+    field(TVVL, "12")
+    field(TTST, "BiSS 24.0 V")
+    field(TTVL, "13")
     field(FLNK, "$(P)$(M)-ENC-TYP_GET")
 }
 
@@ -746,6 +762,16 @@ record(mbbi, "$(P)$(M)-ENC-TYP_GET")
     field(SVVL, "7")
     field(EIST, "EnDat 5.5V")
     field(EIVL, "8")
+    field(NIST, "resolver")
+    field(NIVL, "9")
+    field(TEST, "LVDT 4-wire")
+    field(TEVL, "10")
+    field(ELST, "LVDT 5/6-wire")
+    field(ELVL, "11")
+    field(TVST, "BiSS 5.0 V")
+    field(TVVL, "12")
+    field(TTST, "BiSS 24.0 V")
+    field(TTVL, "13")
     field(PINI, "YES")
 }
 
