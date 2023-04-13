@@ -1,5 +1,24 @@
 # motorPhytron Releases
 
+## __R1-2 (2023-04-13)__
+R1-2 is a release based on the master branch.
+
+### Changes since R1-1
+
+#### New features
+* Pull request [#6](https://github.com/epics-motor/motorPhytron/pull/6): [Hasan SANSAR](https://github.com/osiloscop) updated Phytron_I1AM01.db for BiSS interface
+
+#### Modifications to existing features
+* None
+
+#### Bug fixes
+* Pull request [#3](https://github.com/epics-motor/motorPhytron/pull/3): Fix reference on limit switch from [Bernhard Kuner](https://github.com/bkuner)
+* Pull request [#4](https://github.com/epics-motor/motorPhytron/pull/4): [Bernhard Kuner](https://github.com/bkuner) fixed a deceleration bug
+
+#### Continuous integration
+* Added ci-scripts (v3.0.1)
+* Configured to use Github Actions for CI
+
 ## __R1-1 (2020-05-11)__
 R1-1 is a release based on the master branch.  
 
