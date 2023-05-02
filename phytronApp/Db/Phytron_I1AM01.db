@@ -1116,3 +1116,50 @@ record(ai, "$(P)$(M)-MOTOR-TEMP")
     field(FLNK, "$(P)$(M)-MOTOR-TEMP")
 }
 
+################################################################################
+# Brake output (digital output) for releasing motor brake
+################################################################################
+record(ao, "$(P)$(M)-BRAKE-OUTPUT")
+{
+    field(DESC, "Brake output")
+    field(DTYP, "asynFloat64")
+    field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))AXIS_BRAKE_OUTPUT")
+    info(asyn:READBACK, "1")
+}
+
+################################################################################
+# Disable motor output when idle
+################################################################################
+record(bo, "$(P)$(M)-DISABLE_MOTOR")
+{
+    field(DESC, "Disables motor output when idle")
+    field(DTYP, "asynInt32")
+    field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))AXIS_DISABLE_MOTOR")
+    field(ZNAM, "Motor enabled")
+    field(ONAM, "Motor disabled on idle")
+    info(asyn:READBACK, "1")
+}
+
+################################################################################
+# Time to engage brake (seconds)
+################################################################################
+record(ao, "$(P)$(M)-BRAKE-ENGAGE-TIME")
+{
+    field(DESC, "Brake engage time")
+    field(DTYP, "asynFloat64")
+    field(EGU, "sec")
+    field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))AXIS_BRAKE_ENGAGE_TIME")
+    info(asyn:READBACK, "1")
+}
+
+################################################################################
+# Time to release brake (seconds)
+################################################################################
+record(ao, "$(P)$(M)-BRAKE-RELEASE-TIME")
+{
+    field(DESC, "Brake release time")
+    field(DTYP, "asynFloat64")
+    field(EGU, "sec")
+    field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))AXIS_BRAKE_RELEASE_TIME")
+    info(asyn:READBACK, "1")
+}
