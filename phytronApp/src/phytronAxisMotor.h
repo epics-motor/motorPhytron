@@ -135,7 +135,7 @@ private:
   enum pollMethod iPollMethod_; // individual poll method for this axis
 
   // Workaround for homing type limit
-  int homeState;
+  int homeState_;
 
 friend class phytronController;
 };

@@ -957,7 +957,7 @@ phytronAxis::phytronAxis(phytronController *pC, int axisNo)
   , lastStatus(phytronSuccess)
   , brakeReleased_(0)
   , iPollMethod_(pollMethodDefault)
-  , homeState(0)
+  , homeState_(0)
 {
   //Controller always supports encoder. Encoder enable/disable is set through UEIP
   setIntegerParam(pC_->motorStatusHasEncoder_, 1);
@@ -1202,7 +1202,7 @@ asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acce
 
   pC_->getIntegerParam(axisNo_, pC_->homingProcedure_, &homingType);
   if (homingType == limit)
-    homeState = forwards ? 3 : 2;
+    homeState_ = forwards ? 3 : 2;
 
   phyStatus =  setVelocity(&asCommands, minVelocity, maxVelocity, homeMove);
   CHECK_AXIS("home", "Setting the velocity", this, return pC_->phyToAsyn(phyStatus));
@@ -1456,7 +1456,7 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
   // idle/moving status
   pC_->getIntegerParam(axisNo_, pC_->motorStatusDone_, &iOldDone);
   if (iIdleIdx >= 0)
-    bMoving = (asValues[iIdleIdx].substr(0, 1) == "E");
+    bMoving = (asValues[iIdleIdx].substr(0, 1) != "E");
   else
     bMoving = (iAxisStatus & 1) != 0;
   setIntegerParam(pC_->motorStatusDone_, bMoving ? 0 : 1);
@@ -1465,32 +1465,32 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
 
   iHighLimit = (iAxisStatus & 0x10) ? 1 : 0;
   iLowLimit  = (iAxisStatus & 0x20) ? 1 : 0;
-  if (homeState >> 1) {
+  if (homeState_ >> 1) {
     // workaround for home on limit switch
-    if (homeState & 1)
+    if (homeState_ & 1)
       iHighLimit = 0;
     else
       iLowLimit = 0;
-    switch (homeState >> 1) {
+    switch (homeState_ >> 1) {
       case 1: // homing started, wait for moving
         if (bMoving)
-          homeState += 2;
+          homeState_ += 2;
         break;
       case 2: // wait for move done
       case 3: // tell record about limit reached
       case 4:
         if (!bMoving) {
-          homeState += 2;
-          if (homeState & 1)
+          homeState_ += 2;
+          if (homeState_ & 1)
             iHighLimit = 1;
           else
             iLowLimit = 1;
         }
-        if ((homeState >> 1) >= 4)
-          homeState = 0;
+        if ((homeState_ >> 1) >= 4)
+          homeState_ = 0;
         break;
       default:
-        homeState = 0;
+        homeState_ = 0;
         break;
     }
   }
