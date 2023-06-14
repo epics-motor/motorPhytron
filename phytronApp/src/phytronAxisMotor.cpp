@@ -80,9 +80,10 @@ static vector<phytronController*> controllers;
   * \param[in] phytronPortName   The name of the drvAsynIPPort that was created previously to connect to the phytron controller
   * \param[in] movingPollPeriod  The time between polls when any axis is moving
   * \param[in] idlePollPeriod    The time between polls when no axis is moving
+  * \param[in] noResetAtBoot     if 0 or not set then controller is reset, if 1 then it's not 
   */
 phytronController::phytronController(const char *phytronPortName, const char *asynPortName,
-                                     double movingPollPeriod, double idlePollPeriod, double timeout)
+                                     double movingPollPeriod, double idlePollPeriod, double timeout, bool noResetAtBoot)
   :  asynMotorController(phytronPortName,
                          0xFF,
                          NUM_PHYTRON_PARAMS,
@@ -159,13 +160,16 @@ phytronController::phytronController(const char *phytronPortName, const char *as
     //phytronCreateAxis will search for the controller for axis registration
     controllers.push_back(this);
 
-    //RESET THE CONTROLLER
-    if (sendPhytronCommand(std::string("CR")))
-      asynPrint(this->pasynUserSelf, ASYN_TRACE_WARNING,
-            "phytronController::phytronController: Could not reset controller %s\n", this->controllerName_);
+    if (noResetAtBoot != 1){
+      //RESET THE CONTROLLER
+      if (sendPhytronCommand(std::string("CR")))
+        asynPrint(this->pasynUserSelf, ASYN_TRACE_WARNING,
+              "phytronController::phytronController: Could not reset controller %s\n", this->controllerName_);
 
-    //Wait for reset to finish
-    epicsThreadSleep(10.0);
+      //Wait for reset to finish
+      epicsThreadSleep(10.0);
+    }  
+
 
     startPoller(movingPollPeriod, idlePollPeriod, 5);
   }
@@ -178,11 +182,12 @@ phytronController::phytronController(const char *phytronPortName, const char *as
   * \param[in] numController     number of axes that this controller supports is numController*AXES_PER_CONTROLLER
   * \param[in] movingPollPeriod  The time in ms between polls when any axis is moving
   * \param[in] idlePollPeriod    The time in ms between polls when no axis is moving
+  * \param[in] noResetAtBoot     if 0 or not set then controller is reset, if 1 then it's not
   */
 extern "C" int phytronCreateController(const char *phytronPortName, const char *asynPortName,
-                                   int movingPollPeriod, int idlePollPeriod, double timeout)
+                                   int movingPollPeriod, int idlePollPeriod, double timeout, int noResetAtBoot)
 {
-  new phytronController(phytronPortName, asynPortName, movingPollPeriod/1000., idlePollPeriod/1000., timeout);
+  new phytronController(phytronPortName, asynPortName, movingPollPeriod/1000., idlePollPeriod/1000., timeout,noResetAtBoot);
   return asynSuccess;
 }
 
@@ -1524,11 +1529,13 @@ static const iocshArg phytronCreateControllerArg1 = {"PhytronAxis port name", io
 static const iocshArg phytronCreateControllerArg2 = {"Moving poll period (ms)", iocshArgInt};
 static const iocshArg phytronCreateControllerArg3 = {"Idle poll period (ms)", iocshArgInt};
 static const iocshArg phytronCreateControllerArg4 = {"Timeout (ms)", iocshArgDouble};
+static const iocshArg phytronCreateControllerArg5 = {"Do not restart controller with IOC", iocshArgInt};
 static const iocshArg * const phytronCreateControllerArgs[] = {&phytronCreateControllerArg0,
                                                              &phytronCreateControllerArg1,
                                                              &phytronCreateControllerArg2,
                                                              &phytronCreateControllerArg3,
-                                                             &phytronCreateControllerArg4};
+                                                             &phytronCreateControllerArg4,
+                                                             &phytronCreateControllerArg5};
 
 /** Parameters for iocsh phytron brake(s) output registration */
 static const iocshArg phytronBrakeOutputArg0 = {"Controller Name", iocshArgString};
@@ -1545,12 +1552,12 @@ static const iocshArg* const phytronBrakeOutputArgs[] = {&phytronBrakeOutputArg0
                                                          &phytronBrakeOutputArg5};
 
 static const iocshFuncDef phytronCreateAxisDef = {"phytronCreateAxis", 3, phytronCreateAxisArgs};
-static const iocshFuncDef phytronCreateControllerDef = {"phytronCreateController", 5, phytronCreateControllerArgs};
+static const iocshFuncDef phytronCreateControllerDef = {"phytronCreateController", 6, phytronCreateControllerArgs};
 static const iocshFuncDef phytronBrakeOutputDef = {"phytronBrakeOutput", 6, phytronBrakeOutputArgs};
 
 static void phytronCreateControllerCallFunc(const iocshArgBuf *args)
 {
-  phytronCreateController(args[0].sval, args[1].sval, args[2].ival, args[3].ival, args[4].dval);
+  phytronCreateController(args[0].sval, args[1].sval, args[2].ival, args[3].ival, args[4].dval,args[5].ival);
 }
 
 static void phytronCreateAxisCallFunc(const iocshArgBuf *args)
