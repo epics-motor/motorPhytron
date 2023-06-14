@@ -160,12 +160,12 @@ phytronController::phytronController(const char *phytronPortName, const char *as
     controllers.push_back(this);
 
     //RESET THE CONTROLLER
-    if (sendPhytronCommand(std::string("CR")))
-      asynPrint(this->pasynUserSelf, ASYN_TRACE_WARNING,
-            "phytronController::phytronController: Could not reset controller %s\n", this->controllerName_);
+    //if (sendPhytronCommand(std::string("CR")))
+    //  asynPrint(this->pasynUserSelf, ASYN_TRACE_WARNING,
+    //        "phytronController::phytronController: Could not reset controller %s\n", this->controllerName_);
 
     //Wait for reset to finish
-    epicsThreadSleep(10.0);
+    //epicsThreadSleep(10.0);
 
     startPoller(movingPollPeriod, idlePollPeriod, 5);
   }
