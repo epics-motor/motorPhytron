@@ -143,7 +143,7 @@ friend class phytronController;
 class phytronController : public asynMotorController
 {
 public:
-  phytronController(const char *portName, const char *phytronPortName, double movingPollPeriod, double idlePollPeriod, double timeout);
+  phytronController(const char *portName, const char *phytronPortName, double movingPollPeriod, double idlePollPeriod, double timeout, bool resetAtBoot);
   asynStatus readInt32(asynUser *pasynUser, epicsInt32 *value);
   asynStatus writeInt32(asynUser *pasynUser, epicsInt32 value);
   asynStatus readFloat64(asynUser *pasynUser, epicsFloat64 *value);
