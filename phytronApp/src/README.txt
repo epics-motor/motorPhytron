@@ -5,7 +5,9 @@ Authors: Tom Slejko, Bor Marolt, Cosylab d.d.
 		tom.slejko@cosylab.com
 		bor.marolt@cosylab.com
 	 Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH
+   Will Smith, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH
 		rossa@helmholtz-berlin.de
+    william.smith@helmholtz-berlin.de
 
 ********************************************************************************
 Table of contents:
@@ -90,12 +92,13 @@ Phytron (MCM) controller port is configured (and connected to previously created
 asyn port) by running the following iocsh function:
 
 phytronCreateController(const char *phytronPortName, const char *asynPortName,
-                int movingPollPeriod, int idlePollPeriod, double timeout)
+                int movingPollPeriod, int idlePollPeriod, double timeout, int noResetAtBoot)
 - phytronPortName: Name of the particular MCM unit.
 - asynPortName: Name of the previously configured asyn port - interface to MCM
 - movingPollPeriod: The time between polls when any axis is moving in ms
 - idlePolPeriod: The time between polls when no axis is moving in ms
 - Timeout: Milliseconds before timeout for I/O requests
+- noResetAtBoot: if 1 then the controller is not reset at boot. If unset or 0 it is
 
 where poll reads the basic axis status, e.g. position of the motor and of the 
 encoder, checks if axis is in movement, checks if motor is at the limit 
