@@ -1,6 +1,6 @@
 record(motor,"$(P)$(M)")
 {
-	info(autosaveFields, "DIR VELO VBAS VMAX ACCL BDST BVEL BACC MRES ERES PREC EGU DHLM DLLM OFF")
+	info(autosaveFields, "DVAL DIR VELO VBAS VMAX ACCL BDST BVEL BACC MRES ERES PREC EGU DHLM DLLM OFF")
 	field(DESC,"$(DESC)")
 	field(DTYP,"$(DTYP)")
 	field(DIR,"$(DIR)")
