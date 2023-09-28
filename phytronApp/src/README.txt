@@ -4,6 +4,10 @@ Phytron I1AM01 Stepper Motor Controller Asyn Driver Documentation
 Authors: Tom Slejko, Bor Marolt, Cosylab d.d.
 		tom.slejko@cosylab.com
 		bor.marolt@cosylab.com
+	 Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH
+   Will Smith, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH
+		rossa@helmholtz-berlin.de
+    william.smith@helmholtz-berlin.de
 
 ********************************************************************************
 Table of contents:
@@ -88,12 +92,13 @@ Phytron (MCM) controller port is configured (and connected to previously created
 asyn port) by running the following iocsh function:
 
 phytronCreateController(const char *phytronPortName, const char *asynPortName,
-                int movingPollPeriod, int idlePollPeriod, double timeout)
+                int movingPollPeriod, int idlePollPeriod, double timeout, int noResetAtBoot)
 - phytronPortName: Name of the particular MCM unit.
 - asynPortName: Name of the previously configured asyn port - interface to MCM
 - movingPollPeriod: The time between polls when any axis is moving in ms
 - idlePolPeriod: The time between polls when no axis is moving in ms
 - Timeout: Milliseconds before timeout for I/O requests
+- noResetAtBoot: if 1 then the controller is not reset at boot. If unset or 0 it is
 
 where poll reads the basic axis status, e.g. position of the motor and of the 
 encoder, checks if axis is in movement, checks if motor is at the limit 
@@ -110,6 +115,25 @@ Module index and axis index compose the axis asyn ADDR (ADDR macro) used in the
 motor.substitutions file. 
 
 PhytronCreateAxis must be called for each axis intended to be used.
+
+If the axis has a brake and it should be triggered by a digital output, the
+command phytronBrakeOutput could be used to configure this:
+
+phytronBrakeOutput(const char* phytronPortName, float fAxis, float fOutput,
+                   int bDisableMotor, double dEngageTime, double dReleaseTime)
+- phytronPortName: Previously defined name of the MCM unit
+- fAxis:   <module>.<axis> as float number for axis selection
+- fOutput: <module>.<output> as float number for digital output selection
+                   or 0.0 to disable, negative value inverts output
+-  bDisableMotor:   0=keep motor enabled, 1=disable motor output, when idle
+- dEngageTime:     time is milliseconds to engage brake (max. 10 sec)
+                   and the motor is disabled after this time
+- dReleaseTime:    time is milliseconds to release brake (max. 10 sec)
+                   and motor is started after this time
+
+Note: The motor thread is blocked for the wait time and no other axis nor the
+      controller is updated while waiting. Keep this time as short as possible!
+Note: The brake support inside EPICS records may overwrite this.
 
 ********************************************************************************
 WARNING: For every axis, the user must specify it's address (ADDR macro) in the 
@@ -216,6 +240,25 @@ COMMEN: If limit switch is reached, controller goes to axis error state
 - Ref-Center-Encoder (Driving on a reference signal to center and then to 
 encoder zero pulse)
         HOMF - m.aRC+^I, HOMR - m.aRC-^I
+
+Brake support:
+--------------
+RECORDS
+  $(P)$(M)-BRAKE-OUTPUT
+    Digital output used for a brake as floating point "<module>.<output>".
+    If the value is positive, the output is set while move and reset on idle
+    state. If the value is negative, the output is inverted. To disable,
+    set it to 0.0, which is the default.
+  $(P)$(M)-DISABLE_MOTOR
+    Set to non-zero to disable motor output on idle state.
+  $(P)$(M)-BRAKE-ENGAGE-TIME
+    Time in seconds after engaging the brake before disabling the motor.
+  $(P)$(M)-BRAKE-RELEASE-TIME
+    Time in seconds after enabling the motor before releasing the brake.
+
+Please do not spend too much time for switching the brake, because the thread
+is blocked for the wait time and no other axis nor the controller is updated
+while waiting. Keep this time as short as possible!
 
 Reset:
 ------

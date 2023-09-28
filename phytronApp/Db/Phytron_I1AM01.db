@@ -377,6 +377,7 @@ record(mbbo, "$(P)$(M)-HOMING_SET")
     field(SXST, "Ref-Center-Encoder")       #HOMF RC+^I, HOMR RC-^I, Offsets
     field(SXVL, "6")
     field(FLNK, "$(P)$(M)-HOMING_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(mbbi, "$(P)$(M)-HOMING_GET")
@@ -419,7 +420,8 @@ record(mbbo, "$(P)$(M)-MOVE-TYP_SET")
     field(ZRVL, "0")        
     field(ONST, "HW switch") 
     field(ONVL, "1")            
-    field(FLNK, "$(P)$(M)-MOVE-TYP_GET")   
+    field(FLNK, "$(P)$(M)-MOVE-TYP_GET")  
+    info(autosaveFields, "VAL") 
 }
 
 record(mbbi, "$(P)$(M)-MOVE-TYP_GET")
@@ -444,6 +446,8 @@ record(ao, "$(P)$(M)-POS-OFFSET_SET")
     field(DTYP, "asynInt32")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))MOP_POS")
     field(FLNK, "$(P)$(M)-POS-OFFSET_GET")
+    info(autosaveFields, "VAL")
+    
 }
 
 record(ai, "$(P)$(M)-POS-OFFSET_GET")
@@ -464,6 +468,7 @@ record(ao, "$(P)$(M)-NEG-OFFSET_SET")
     field(DTYP, "asynInt32")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))MOP_NEG")
     field(FLNK, "$(P)$(M)-NEG-OFFSET_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(ai, "$(P)$(M)-NEG-OFFSET_GET")
@@ -484,6 +489,7 @@ record(ao, "$(P)$(M)-INIT-TIMEOUT_SET")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))INIT_TIME")
     field(EGU, "ms")
     field(FLNK, "$(P)$(M)-INIT-TIMEOUT_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(ai, "$(P)$(M)-INIT-TIMEOUT_GET")
@@ -505,6 +511,7 @@ record(ao, "$(P)$(M)-POS-TIMEOUT_SET")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))POSITION_TIME")
     field(EGU, "ms")
     field(FLNK, "$(P)$(M)-POS-TIMEOUT_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(ai, "$(P)$(M)-POS-TIMEOUT_GET")
@@ -531,6 +538,7 @@ record(mbbo, "$(P)$(M)-BOOST_SET")
     field(TWVL, "2")
     field(TWST, "ON ACCELERATION")
     field(FLNK, "$(P)$(M)-BOOST_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(mbbi, "$(P)$(M)-BOOST_GET")
@@ -576,6 +584,7 @@ record(mbbo, "$(P)$(M)-ENC-RATE_SET")
     field(NIVL, "10")
     field(NIST, "1000 kHz")
     field(FLNK, "$(P)$(M)-ENC-RATE_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(mbbi, "$(P)$(M)-ENC-RATE_GET")
@@ -634,6 +643,7 @@ record(mbbo, "$(P)$(M)-SWITCH-TYP_SET")
     field(SVVL, "7")
     field(SVST, "NOC/NOC/NOC")
     field(FLNK, "$(P)$(M)-SWITCH-TYP_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(mbbi, "$(P)$(M)-SWITCH-TYP_GET")
@@ -673,6 +683,7 @@ record(bo, "$(P)$(M)-PWR-STAGE-MODE_SET")
     field(ZNAM, "Deactivate")
     field(ONAM, "Activate")
     field(FLNK, "$(P)$(M)-PWR-STAGE-MODE_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(bi, "$(P)$(M)-PWR-STAGE-MODE_GET")
@@ -737,6 +748,7 @@ record(mbbo, "$(P)$(M)-ENC-TYP_SET")
     field(TTST, "BiSS 24.0 V")
     field(TTVL, "13")
     field(FLNK, "$(P)$(M)-ENC-TYP_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(mbbi, "$(P)$(M)-ENC-TYP_GET")
@@ -787,7 +799,8 @@ record(ao, "$(P)$(M)-ENC-RES_SET")
     field(EGU, "b")
     field(HOPR, "48")
     field(LOPR, "0")
-    field(FLNK, "$(P)$(M)-ENC-RES_GET")
+    field(FLNK, "$(P)$(M)-ENC-RES_GET")#
+    info(autosaveFields, "VAL")
 }
 
 record(ai, "$(P)$(M)-ENC-RES_GET")
@@ -817,6 +830,7 @@ record(bo, "$(P)$(M)-ENC-FUNC_SET")
     field(OMSL, "closed_loop")
     field(DOL, "$(P)$(M)-ENC-SFI_GET")
     field(FLNK, "$(P)$(M)-ENC-FUNC_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(bi, "$(P)$(M)-ENC-FUNC_GET")
@@ -838,6 +852,7 @@ record(ao, "$(P)$(M)-ENC-SFI_SET")
     field(DTYP, "asynInt32")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))ENC_SFI_WIDTH")
     field(FLNK, "$(P)$(M)-ENC-SFI_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(ai, "$(P)$(M)-ENC-SFI_GET")
@@ -860,6 +875,7 @@ record(bo, "$(P)$(M)-ENC-DIR_SET")
     field(ZNAM, "Positive")
     field(ONAM, "Negative")
     field(FLNK, "$(P)$(M)-ENC-DIR_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(bi, "$(P)$(M)-ENC-DIR_GET")
@@ -887,6 +903,7 @@ record(ao, "$(P)$(M)-STOP-CURRENT_SET")
     field(HSV, "MINOR")
     field(HHSV, "MAJOR")
     field(FLNK, "$(P)$(M)-STOP-CURRENT_GET")
+    info(autosaveFields, "VAL")
 
 }
 
@@ -922,6 +939,7 @@ record(ao, "$(P)$(M)-RUN-CURRENT_SET")
     field(HSV, "MINOR")
     field(HHSV, "MAJOR")
     field(FLNK, "$(P)$(M)-RUN-CURRENT_GET")
+    info(autosaveFields, "VAL")
 
 }
 
@@ -957,6 +975,7 @@ record(ao, "$(P)$(M)-BOOST-CURRENT_SET")
     field(HSV, "MINOR")
     field(HHSV, "MAJOR")
     field(FLNK, "$(P)$(M)-BOOST-CURRENT_GET")
+    info(autosaveFields, "VAL")
 
 }
 
@@ -985,6 +1004,7 @@ record(ao, "$(P)$(M)-CURRENT-DELAY_SET")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))CURRENT_DELAY_TIME")
     field(EGU, "msec")
     field(FLNK, "$(P)$(M)-CURRENT-DELAY_GET")
+    info(autosaveFields, "VAL")
 
 }
 
@@ -1031,6 +1051,7 @@ record(mbbo, "$(P)$(M)-STEP-RES_SET")
     field(ELST, "1/128")
     field(ELVL, "11")
     field(FLNK, "$(P)$(M)-STEP-RES_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(mbbi, "$(P)$(M)-STEP-RES_GET")
@@ -1090,6 +1111,7 @@ record(bo, "$(P)$(M)-PS-MONITOR_SET")
     field(ZNAM, "OFF")
     field(ONAM, "ON")
     field(FLNK, "$(P)$(M)-PS-MONITOR_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(bi, "$(P)$(M)-PS-MONITOR_GET")
@@ -1116,3 +1138,53 @@ record(ai, "$(P)$(M)-MOTOR-TEMP")
     field(FLNK, "$(P)$(M)-MOTOR-TEMP")
 }
 
+################################################################################
+# Brake output (digital output) for releasing motor brake
+################################################################################
+record(ao, "$(P)$(M)-BRAKE-OUTPUT")
+{
+    field(DESC, "Brake output")
+    field(DTYP, "asynFloat64")
+    field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))AXIS_BRAKE_OUTPUT")
+    info(asyn:READBACK, "1")
+}
+
+################################################################################
+# Disable motor output when idle
+################################################################################
+record(bo, "$(P)$(M)-DISABLE_MOTOR")
+{
+    field(DESC, "Disables motor output when idle")
+    field(DTYP, "asynInt32")
+    field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))AXIS_DISABLE_MOTOR")
+    field(ZNAM, "Motor enabled")
+    field(ONAM, "Motor disabled on idle")
+    info(asyn:READBACK, "1")
+    info(autosaveFields, "VAL")
+}
+
+################################################################################
+# Time to engage brake (seconds)
+################################################################################
+record(ao, "$(P)$(M)-BRAKE-ENGAGE-TIME")
+{
+    field(DESC, "Brake engage time")
+    field(DTYP, "asynFloat64")
+    field(EGU, "sec")
+    field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))AXIS_BRAKE_ENGAGE_TIME")
+    info(asyn:READBACK, "1")
+    info(autosaveFields, "VAL")
+}
+
+################################################################################
+# Time to release brake (seconds)
+################################################################################
+record(ao, "$(P)$(M)-BRAKE-RELEASE-TIME")
+{
+    field(DESC, "Brake release time")
+    field(DTYP, "asynFloat64")
+    field(EGU, "sec")
+    field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))AXIS_BRAKE_RELEASE_TIME")
+    info(asyn:READBACK, "1")
+    info(autosaveFields, "VAL")
+}

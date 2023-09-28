@@ -4,7 +4,9 @@ USAGE...    Motor driver support for Phytron Axis controller.
 
 Tom Slejko & Bor Marolt
 Cosylab d.d. 2014
- 
+
+Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2023
+
 */
 
 #include <stdio.h>
@@ -22,6 +24,8 @@ Cosylab d.d. 2014
 #include <drvAsynIPPort.h>
 #include <iocsh.h>
 #include <epicsThread.h>
+#include <epicsStdlib.h>
+#include <epicsString.h>
 #include <cantProceed.h>
 
 #include <asynOctetSyncIO.h>
@@ -35,8 +39,35 @@ using namespace std;
 #define ASYN_TRACE_WARNING ASYN_TRACE_ERROR
 #endif
 
+#define CHECK_CTRL(xfunc, xtxt, xextra) \
+    if (phyStatus) { \
+      if (phyStatus != lastStatus) { \
+        asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR, \
+          "phytronController::%s: (%s) %s failed with error code: %d, reason: %d\n", \
+          xfunc, this->controllerName_, xtxt, phyStatus, pasynUser->reason); \
+        lastStatus = phyStatus; \
+      } \
+      xextra; \
+    } \
+    lastStatus = phyStatus
+
+#define CHECK_AXIS(xfunc, xtxt, xinstance, xextra) \
+    if (phyStatus) { \
+      if (phyStatus != lastStatus) { \
+        asynPrint(xinstance->pasynUser_, ASYN_TRACE_ERROR, \
+          "phytronAxis::%s: (%s) %s for axis %d failed with error code: %d\n", \
+          xfunc, xinstance->pC_->controllerName_, xtxt, xinstance->axisNo_, phyStatus); \
+        lastStatus = phyStatus; \
+      } \
+      xextra; \
+    } \
+    lastStatus = phyStatus
+
 //Used for casting position doubles to integers
 #define NINT(f) (int)((f)>0 ? (f)+0.5 : (f)-0.5)
+
+//Specify maximum sleep time after brake was (de)activated in seconds
+#define MAXIMUM_BRAKE_TIME 10.0
 
 /*
  * Contains phytronController instances, phytronCreateAxis uses it to find and
@@ -49,21 +80,22 @@ static vector<phytronController*> controllers;
   * \param[in] phytronPortName   The name of the drvAsynIPPort that was created previously to connect to the phytron controller
   * \param[in] movingPollPeriod  The time between polls when any axis is moving
   * \param[in] idlePollPeriod    The time between polls when no axis is moving
+  * \param[in] noResetAtBoot     if 0 or not set then controller is reset, if 1 then it's not 
   */
 phytronController::phytronController(const char *phytronPortName, const char *asynPortName,
-                                 double movingPollPeriod, double idlePollPeriod, double timeout)
+                                     double movingPollPeriod, double idlePollPeriod, double timeout, bool noResetAtBoot)
   :  asynMotorController(phytronPortName,
                          0xFF,
                          NUM_PHYTRON_PARAMS,
-                         0, //No additional interfaces beyond those in base class
+                         asynOptionMask, // additional interfaces
                          0, //No additional callback interfaces beyond those in base class
                          ASYN_CANBLOCK | ASYN_MULTIDEVICE,
                          1, // autoconnect
                          0, 0)// Default priority and stack size
+  , do_initial_readout_(true)
+  , iDefaultPollMethod_(pollMethodSerial)
 {
   asynStatus status;
-  size_t response_len;
-  phytronStatus phyStatus;
   static const char *functionName = "phytronController::phytronController";
 
   //Timeout is defined in milliseconds, but sendPhytronCommand expects seconds
@@ -107,7 +139,10 @@ phytronController::phytronController(const char *phytronPortName, const char *as
   createParam(currentDelayTimeString,     asynParamInt32, &this->currentDelayTime_);
   createParam(powerStageTempString,       asynParamFloat64, &this->powerStageTemp_);
   createParam(motorTempString,            asynParamFloat64, &this->motorTemp_);
-
+  createParam(axisBrakeOutputString,      asynParamFloat64, &this->axisBrakeOutput_);
+  createParam(axisDisableMotorString,     asynParamInt32, &this->axisDisableMotor_);
+  createParam(axisBrakeEngageTimeString,  asynParamFloat64, &this->axisBrakeEngageTime_);
+  createParam(axisBrakeReleaseTimeString, asynParamFloat64, &this->axisBrakeReleaseTime_);
 
   /* Connect to phytron controller */
   status = pasynOctetSyncIO->connect(asynPortName, 0, &pasynUserController_, NULL);
@@ -116,23 +151,28 @@ phytronController::phytronController(const char *phytronPortName, const char *as
       "%s: cannot connect to phytron controller\n",
       functionName);
   } else {
+    // this hook forces an initial readout before the motor record has
+    // finished initializing (before pass 1), so it has actual values for
+    // REP, RMP, MSTA fields, especially for absolute encoders
+    if (controllers.empty())
+      initHookRegister(&phytronController::epicsInithookFunction);
+
     //phytronCreateAxis will search for the controller for axis registration
     controllers.push_back(this);
 
-    //RESET THE CONTROLLER
-    sprintf(this->outString_, "CR");
-    phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &response_len);
-    if(phyStatus){
-      asynPrint(this->pasynUserSelf, ASYN_TRACE_WARNING,
-            "phytronController::phytronController: Could not reset controller %s\n", this->controllerName_);
-    }
+    if (noResetAtBoot != 1){
+      //RESET THE CONTROLLER
+      if (sendPhytronCommand(std::string("CR")))
+        asynPrint(this->pasynUserSelf, ASYN_TRACE_WARNING,
+              "phytronController::phytronController: Could not reset controller %s\n", this->controllerName_);
 
-    //Wait for reset to finish
-    epicsThreadSleep(10.0);
+      //Wait for reset to finish
+      epicsThreadSleep(10.0);
+    }  
+
 
     startPoller(movingPollPeriod, idlePollPeriod, 5);
   }
-
 }
 
 /** Creates a new phytronController object.
@@ -142,11 +182,12 @@ phytronController::phytronController(const char *phytronPortName, const char *as
   * \param[in] numController     number of axes that this controller supports is numController*AXES_PER_CONTROLLER
   * \param[in] movingPollPeriod  The time in ms between polls when any axis is moving
   * \param[in] idlePollPeriod    The time in ms between polls when no axis is moving
+  * \param[in] noResetAtBoot     if 0 or not set then controller is reset, if 1 then it's not
   */
 extern "C" int phytronCreateController(const char *phytronPortName, const char *asynPortName,
-                                   int movingPollPeriod, int idlePollPeriod, double timeout)
+                                   int movingPollPeriod, int idlePollPeriod, double timeout, int noResetAtBoot)
 {
-  new phytronController(phytronPortName, asynPortName, movingPollPeriod/1000., idlePollPeriod/1000., timeout);
+  new phytronController(phytronPortName, asynPortName, movingPollPeriod/1000., idlePollPeriod/1000., timeout,noResetAtBoot);
   return asynSuccess;
 }
 
@@ -158,30 +199,21 @@ asynStatus phytronController::readInt32(asynUser *pasynUser, epicsInt32 *value)
 {
   phytronAxis   *pAxis;
   phytronStatus phyStatus;
+  std::string   sResponse;
+  int           iParameter(0);
 
   //Call base implementation first
-  asynPortDriver::readInt32(pasynUser, value);
+  asynMotorController::readInt32(pasynUser, value);
 
   //Check if this is a call to read a controller parameter
   if(pasynUser->reason == resetController_ || pasynUser->reason == controllerStatusReset_){
     //Called only on initialization of bo records RESET and RESET-STATUS
     return asynSuccess;
   } else if (pasynUser->reason == controllerStatus_){
-    size_t response_len;
-    sprintf(this->outString_, "ST");
-    phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &response_len);
-    if(phyStatus){
-      if (phyStatus != lastStatus) {
-        asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
-          "phytronAxis::readInt32: Reading controller %s status failed with error "
-          "code: %d\n", this->controllerName_, phyStatus);
-        lastStatus = phyStatus;
-      }
-      return phyToAsyn(phyStatus);
-    }
-    lastStatus = phyStatus;
+    phyStatus = sendPhytronCommand(std::string("ST"), sResponse);
+    CHECK_CTRL("readInt32", "Reading controller status", return phyToAsyn(phyStatus));
 
-    *value = atoi(this->inString_);
+    *value = atoi(sResponse.c_str());
     return asynSuccess;
   }
 
@@ -189,7 +221,7 @@ asynStatus phytronController::readInt32(asynUser *pasynUser, epicsInt32 *value)
   pAxis = getAxis(pasynUser);
   if(!pAxis){
     asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
-       "phytronAxis::readInt32: Axis not found on the controller %s\n", this->controllerName_);
+       "phytronController::readInt32: Axis not found on the controller %s\n", this->controllerName_);
     return asynError;
   }
 
@@ -199,69 +231,42 @@ asynStatus phytronController::readInt32(asynUser *pasynUser, epicsInt32 *value)
   } else if (pasynUser->reason == axisReset_ || pasynUser->reason == axisStatusReset_){
     //Called only on initialization of AXIS-RESET and AXIS-STATUS-RESET bo records
     return asynSuccess;
-  } else if (pasynUser->reason == axisMode_){
-    sprintf(this->outString_, "M%.1fP01R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == mopOffsetPos_){
-    sprintf(this->outString_, "M%.1fP11R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == mopOffsetNeg_){
-    sprintf(this->outString_, "M%.1fP12R", pAxis->axisModuleNo_);
-  } else if (pasynUser->reason == stepResolution_){
-    sprintf(this->outString_, "M%.1fP45R", pAxis->axisModuleNo_);
-  } else if (pasynUser->reason == stopCurrent_){
-    sprintf(this->outString_, "M%.1fP40R", pAxis->axisModuleNo_);
-  } else if (pasynUser->reason == runCurrent_){
-    sprintf(this->outString_, "M%.1fP41R", pAxis->axisModuleNo_);
-  } else if (pasynUser->reason == boostCurrent_){
-    sprintf(this->outString_, "M%.1fP42R", pAxis->axisModuleNo_);
-  } else if (pasynUser->reason == encoderType_){
-    sprintf(this->outString_, "M%.1fP34R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == initRecoveryTime_){
-    sprintf(this->outString_, "M%.1fP13R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == positionRecoveryTime_){
-    sprintf(this->outString_, "M%.1fP16R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == boost_){
-    sprintf(this->outString_, "M%.1fP17R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == encoderRate_){
-    sprintf(this->outString_, "M%.1fP26R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == switchTyp_){
-    sprintf(this->outString_, "M%.1fP27R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == pwrStageMode_){
-    sprintf(this->outString_, "M%.1fP28R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == encoderRes_){
-    sprintf(this->outString_, "M%.1fP35R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == encoderFunc_){
-    sprintf(this->outString_, "M%.1fP36R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == encoderSFIWidth_){
-    sprintf(this->outString_, "M%.1fP37R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == encoderDirection_){
-    sprintf(this->outString_, "M%.1fP38R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == currentDelayTime_){
-    sprintf(this->outString_, "M%.1fP43R", pAxis->axisModuleNo_);
-  } else if(pasynUser->reason == powerStageMonitor_){
-    sprintf(this->outString_, "M%.1fP53R", pAxis->axisModuleNo_);
+  } else if (pasynUser->reason == axisDisableMotor_) {
+    *value = pAxis->disableMotor_ & 1;
+    return asynSuccess;
   }
+  else if (pasynUser->reason == axisMode_)             iParameter =  1;
+  else if (pasynUser->reason == mopOffsetPos_)         iParameter = 11;
+  else if (pasynUser->reason == mopOffsetNeg_)         iParameter = 12;
+  else if (pasynUser->reason == stepResolution_)       iParameter = 45;
+  else if (pasynUser->reason == stopCurrent_)          iParameter = 40;
+  else if (pasynUser->reason == runCurrent_)           iParameter = 41;
+  else if (pasynUser->reason == boostCurrent_)         iParameter = 42;
+  else if (pasynUser->reason == encoderType_)          iParameter = 43;
+  else if (pasynUser->reason == initRecoveryTime_)     iParameter = 13;
+  else if (pasynUser->reason == positionRecoveryTime_) iParameter = 16;
+  else if (pasynUser->reason == boost_)                iParameter = 17;
+  else if (pasynUser->reason == encoderRate_)          iParameter = 26;
+  else if (pasynUser->reason == switchTyp_)            iParameter = 27;
+  else if (pasynUser->reason == pwrStageMode_)         iParameter = 28;
+  else if (pasynUser->reason == encoderRes_)           iParameter = 35;
+  else if (pasynUser->reason == encoderFunc_)          iParameter = 36;
+  else if (pasynUser->reason == encoderSFIWidth_)      iParameter = 37;
+  else if (pasynUser->reason == encoderDirection_)     iParameter = 38;
+  else if (pasynUser->reason == currentDelayTime_)     iParameter = 43;
+  else if (pasynUser->reason == powerStageMonitor_)    iParameter = 53;
+  else return asynSuccess; // ignore unhandled request
 
+  phyStatus = sendPhytronCommand(std::string("M") + pAxis->axisModuleNo_ + "P" + std::to_string(iParameter) + "R",
+                                 sResponse);
+  CHECK_AXIS("readInt32", "Reading parameter", pAxis, return phyToAsyn(phyStatus));
 
-  phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &pAxis->response_len);
-  if(phyStatus){
-    if (phyStatus != lastStatus) {
-      asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::readInt32: Failed with status %d for reason %d\n", phyStatus, pasynUser->reason);
-      lastStatus = phyStatus;
-    }
-    return phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
-
-  *value = atoi(this->inString_);
+  *value = atoi(sResponse.c_str());
 
   //{STOP,RUN,BOOST} current records have EGU set to mA, but device returns 10mA
   if(pasynUser->reason == stopCurrent_ || pasynUser->reason == runCurrent_ ||
       pasynUser->reason == boostCurrent_)
-  {
     *value *= 10;
-  } // else if
-
 
   return asynSuccess;
 }
@@ -273,7 +278,7 @@ asynStatus phytronController::readInt32(asynUser *pasynUser, epicsInt32 *value)
 asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
 {
   phytronAxis   *pAxis;
-  phytronStatus phyStatus;
+  phytronStatus phyStatus(phytronSuccess);
 
   //Call base implementation first
   asynMotorController::writeInt32(pasynUser, value);
@@ -282,29 +287,13 @@ asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
    * Check if this is a call to reset the controller, else it is an axis request
    */
   if(pasynUser->reason == resetController_){
-    size_t response_len;
-    sprintf(this->outString_, "CR");
-    phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &response_len);
-    if(phyStatus){
-      if (phyStatus != lastStatus) {
-        asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
-          "phytronAxis::writeInt32: Reseting controller %s failed with error code: %d\n", this->controllerName_, phyStatus);
-      }
-    }
-    lastStatus = phyStatus;
+    phyStatus = sendPhytronCommand(std::string("CR"));
+    CHECK_CTRL("writeInt32", "Reseting controller", );
     resetAxisEncoderRatio();
     return phyToAsyn(phyStatus);
   } else if(pasynUser->reason == controllerStatusReset_){
-    size_t response_len;
-    sprintf(this->outString_, "STC");
-    phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &response_len);
-    if(phyStatus){
-      if (phyStatus != lastStatus) {
-        asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
-         "phytronAxis::writeInt32: Reseting controller %s failed with error code: %d\n", this->controllerName_, phyStatus);
-      }
-    }
-    lastStatus = phyStatus;
+    phyStatus = sendPhytronCommand(std::string("STC"));
+    CHECK_CTRL("writeInt32", "Reseting status", );
     return phyToAsyn(phyStatus);
   }
   /*
@@ -317,73 +306,71 @@ asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
     return asynError;
   }
 
+  this->outString_[0] = '\0';
   if(pasynUser->reason == homingProcedure_){
     setIntegerParam(pAxis->axisNo_, pasynUser->reason, value);
     callParamCallbacks();
     return asynSuccess;
   } else if(pasynUser->reason == axisReset_){
-    sprintf(this->outString_, "M%.1fC", pAxis->axisModuleNo_);
+    sprintf(this->outString_, "M%sC", pAxis->axisModuleNo_);
   } else if(pasynUser->reason == axisStatusReset_){
-    sprintf(this->outString_, "SEC%.1f", pAxis->axisModuleNo_);
+    sprintf(this->outString_, "SEC%s", pAxis->axisModuleNo_);
   } else if(pasynUser->reason == axisMode_){
-    sprintf(this->outString_, "M%.1fP01=%d", pAxis->axisModuleNo_,value);
+    sprintf(this->outString_, "M%sP01=%d", pAxis->axisModuleNo_,value);
   } else if(pasynUser->reason == mopOffsetPos_){
-    sprintf(this->outString_, "M%.1fP11=%d", pAxis->axisModuleNo_,value);
+    sprintf(this->outString_, "M%sP11=%d", pAxis->axisModuleNo_,value);
   } else if(pasynUser->reason == mopOffsetNeg_){
-    sprintf(this->outString_, "M%.1fP12=%d", pAxis->axisModuleNo_,value);
+    sprintf(this->outString_, "M%sP12=%d", pAxis->axisModuleNo_,value);
   } else if (pasynUser->reason == stepResolution_){
-    sprintf(this->outString_, "M%.1fP45=%d", pAxis->axisModuleNo_,value);
+    sprintf(this->outString_, "M%sP45=%d", pAxis->axisModuleNo_,value);
   }  else if (pasynUser->reason == stopCurrent_){
     value /= 10; //STOP_CURRENT record has EGU mA, device expects 10mA
-    sprintf(this->outString_, "M%.1fP40=%d", pAxis->axisModuleNo_,value);
+    sprintf(this->outString_, "M%sP40=%d", pAxis->axisModuleNo_,value);
   } else if (pasynUser->reason == runCurrent_){
     value /= 10; //RUN_CURRENT record has EGU mA, device expects 10mA
-    sprintf(this->outString_, "M%.1fP41=%d", pAxis->axisModuleNo_,value);
+    sprintf(this->outString_, "M%sP41=%d", pAxis->axisModuleNo_,value);
   } else if (pasynUser->reason == boostCurrent_){
     value /= 10; //BOOST_CURRENT record has EGU mA, device expects 10mA
-    sprintf(this->outString_, "M%.1fP42=%d", pAxis->axisModuleNo_,value);
+    sprintf(this->outString_, "M%sP42=%d", pAxis->axisModuleNo_,value);
   } else if (pasynUser->reason == encoderType_){
-    sprintf(this->outString_, "M%.1fP34=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP34=%d", pAxis->axisModuleNo_, value);
   } else if (pasynUser->reason == initRecoveryTime_){
-    sprintf(this->outString_, "M%.1fP13=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP13=%d", pAxis->axisModuleNo_, value);
   } else if (pasynUser->reason == positionRecoveryTime_){
-    sprintf(this->outString_, "M%.1fP16=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP16=%d", pAxis->axisModuleNo_, value);
   } else if (pasynUser->reason == boost_){
-    sprintf(this->outString_, "M%.1fP17=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP17=%d", pAxis->axisModuleNo_, value);
   } else if (pasynUser->reason == encoderRate_){
-    sprintf(this->outString_, "M%.1fP26=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP26=%d", pAxis->axisModuleNo_, value);
   } else if (pasynUser->reason == switchTyp_){
-    sprintf(this->outString_, "M%.1fP27=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP27=%d", pAxis->axisModuleNo_, value);
   } else if (pasynUser->reason == pwrStageMode_){
-    sprintf(this->outString_, "M%.1fP28=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP28=%d", pAxis->axisModuleNo_, value);
   } else if (pasynUser->reason == encoderRes_){
-    sprintf(this->outString_, "M%.1fP35=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP35=%d", pAxis->axisModuleNo_, value);
   } else if (pasynUser->reason == encoderFunc_){
     //Value is VAL field of parameter P37 record. If P37 is positive P36 is set to 1, else 0
-    sprintf(this->outString_, "M%.1fP36=%d", pAxis->axisModuleNo_, value > 0 ? 1 : 0);
+    sprintf(this->outString_, "M%sP36=%d", pAxis->axisModuleNo_, value > 0 ? 1 : 0);
   } else if(pasynUser->reason == encoderSFIWidth_){
-    sprintf(this->outString_, "M%.1fP37=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP37=%d", pAxis->axisModuleNo_, value);
   } else if(pasynUser->reason == encoderSFIWidth_){
-    sprintf(this->outString_, "M%.1fP38=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP38=%d", pAxis->axisModuleNo_, value);
   } else if(pasynUser->reason == powerStageMonitor_){
-    sprintf(this->outString_, "M%.1fP53=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP53=%d", pAxis->axisModuleNo_, value);
   } else if(pasynUser->reason == currentDelayTime_){
-    sprintf(this->outString_, "M%.1fP43=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP43=%d", pAxis->axisModuleNo_, value);
   } else if(pasynUser->reason == encoderDirection_){
-    sprintf(this->outString_, "M%.1fP38=%d", pAxis->axisModuleNo_, value);
+    sprintf(this->outString_, "M%sP38=%d", pAxis->axisModuleNo_, value);
+  } else if(pasynUser->reason == axisDisableMotor_){
+    pAxis->disableMotor_ = (pAxis->disableMotor_ & (~1)) | (value != 0) ? 1 : 0;
+    pAxis->setBrakeOutput(NULL, pAxis->brakeReleased_);
+    return asynSuccess;
   }
 
-  phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &pAxis->response_len);
-  if(phyStatus){
-    phyStatus = phytronInvalidCommand;
-    if (phyStatus != lastStatus) {
-      asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::writeInt32: Failed with status %d for reason %d\n", phyStatus, pasynUser->reason);
-      lastStatus = phyStatus;
-    }
-    return phyToAsyn(phyStatus);
+  if (this->outString_[0]) {
+    phyStatus = sendPhytronCommand(const_cast<const char*>(this->outString_));
+    CHECK_AXIS("writeInt32", "Writing parameter", pAxis, return phyToAsyn(phyStatus));
   }
-  lastStatus = phyStatus;
 
   return asynSuccess;
 }
@@ -392,50 +379,189 @@ asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
  * \param[in] pasynUser   asynUser structure containing the reason
  * \param[out] value      Parameter value
  */
-asynStatus phytronController::readFloat64(asynUser *pasynUser, epicsFloat64 *value){
+asynStatus phytronController::readFloat64(asynUser *pasynUser, epicsFloat64 *value)
+{
   phytronAxis   *pAxis;
-  phytronStatus phyStatus;
+  phytronStatus phyStatus(phytronSuccess);
+  std::string   sResponse;
 
   pAxis = getAxis(pasynUser);
   if(!pAxis){
     asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
-       "phytronAxis::readFloat64: Axis not found on the controller %s\n", this->controllerName_);
+       "phytronController::readFloat64: Axis not found on the controller %s\n", this->controllerName_);
     return asynError;
   }
 
   //Call base implementation first
-  asynPortDriver::readFloat64(pasynUser, value);
+  asynMotorController::readFloat64(pasynUser, value);
 
+  this->outString_[0] = '\0';
   if(pasynUser->reason == powerStageTemp_){
-    sprintf(this->outString_, "M%.1fP49R", pAxis->axisModuleNo_);
+    sprintf(this->outString_, "M%sP49R", pAxis->axisModuleNo_);
   } else if(pasynUser->reason == motorTemp_){
-    sprintf(this->outString_, "M%.1fP54R", pAxis->axisModuleNo_);
+    sprintf(this->outString_, "M%sP54R", pAxis->axisModuleNo_);
+  } else if(pasynUser->reason == axisBrakeOutput_){
+    *value = pAxis->brakeOutput_;
+    return asynSuccess;
+  } else if(pasynUser->reason == axisBrakeEngageTime_){
+    *value = pAxis->brakeEngageTime_;
+    return asynSuccess;
+  } else if(pasynUser->reason == axisBrakeReleaseTime_){
+    *value = pAxis->brakeReleaseTime_;
+    return asynSuccess;
   }
 
-  phyStatus = sendPhytronCommand(this->outString_, this->inString_, MAX_CONTROLLER_STRING_SIZE, &pAxis->response_len);
-  if(phyStatus){
-    if (phyStatus != pAxis->lastStatus) {
-      asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::readFloat64: Failed with status %d for reason %d\n", phyStatus, pasynUser->reason);
-      pAxis->lastStatus = phyStatus;
-    }
-    return phyToAsyn(phyStatus);
+  if (this->outString_[0]){
+    phyStatus = sendPhytronCommand(const_cast<const char*>(this->outString_), sResponse);
+    CHECK_AXIS("readFloat64", "Reading parameter", pAxis, return phyToAsyn(phyStatus));
+
+    //Power stage and motor temperature records have EGU °C, but device returns 0.1 °C
+    *value = atof(sResponse.c_str()) / 10.;
   }
-  pAxis->lastStatus = phyStatus;
 
-  *value = atof(this->inString_);
-
-  //Power stage and motor temperature records have EGU °C, but device returns 0.1 °C
-  *value /= 10;
-
-  return phyToAsyn(phyStatus);
-
+  return asynSuccess;
 }
+
+/** asynUsers use this to write float parameters
+ * \param[in] pasynUser   asynUser structure containing the reason
+ * \param[in] value       Parameter value to be written
+ */
+asynStatus phytronController::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
+{
+  phytronAxis* pAxis(getAxis(pasynUser));
+  if(!pAxis){
+    asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
+       "phytronAxis::writeFloat64: Axis not found on the controller %s\n", this->controllerName_);
+    return asynError;
+  }
+
+  if (pasynUser->reason == axisBrakeOutput_)
+    pAxis->brakeOutput_ = floor(10.0 * ((value > -100.0 && value < 100.) ? value : 0.0) + 0.5) / 10.0;
+  else if (pasynUser->reason == axisBrakeEngageTime_) {
+    if (value > MAXIMUM_BRAKE_TIME)
+      value = MAXIMUM_BRAKE_TIME;
+    pAxis->brakeEngageTime_ = value > 0.0 ? value : 0.0;
+  } else if (pasynUser->reason == axisBrakeReleaseTime_) {
+    if (value > MAXIMUM_BRAKE_TIME)
+      value = MAXIMUM_BRAKE_TIME;
+    pAxis->brakeReleaseTime_ = value > 0.0 ? value : 0.0;
+  }
+
+  //Call base implementation
+  return asynMotorController::writeFloat64(pasynUser, value);
+}
+
+/** Called when asyn clients call pasynOption->read().
+ * The base class implementation simply prints an error message.
+ * Derived classes may reimplement this function if required.
+ * \param[in]  pasynUser pasynUser structure that encodes the reason and address.
+ * \param[in]  key       Option key string.
+ * \param[out] value     string to be returned
+ * \param[in]  maxChars  Size of value string
+ * \return asyn status
+ */
+asynStatus phytronController::readOption(asynUser *pasynUser, const char *key, char *value, int maxChars)
+{
+  if (key && value) {
+    *value = '\0';
+    if (epicsStrCaseCmp(key, "pollMethod") == 0) {
+      const char* szMethod;
+      phytronAxis* pAxis(getAxis(pasynUser));
+      enum pollMethod iMethod(pAxis ? pAxis->iPollMethod_ : iDefaultPollMethod_);
+      switch (iMethod) {
+        case pollMethodDefault:            szMethod = "default";       break;
+        case pollMethodSerial:             szMethod = "serial";        break;
+        case pollMethodAxisParallel:       szMethod = "axis-parallel"; break;
+        case pollMethodControllerParallel: szMethod = "ctrl-parallel"; break;
+        default:                           szMethod = "???";           break;
+      }
+      snprintf(value, maxChars, "%d/%s", static_cast<int>(iMethod), szMethod);
+      return asynSuccess;
+    }
+  }
+  return asynMotorController::readOption(pasynUser, key, value, maxChars);
+}
+
+/** Called when asyn clients call pasynOption->write().
+ * The base class implementation simply prints an error message.
+ * Derived classes may reimplement this function if required.
+ * \param[in] pasynUser pasynUser structure that encodes the reason and address.
+ * \param[in] key Option key string.
+ * \param[in] value Value string.
+ * \return asyn status
+ */
+asynStatus phytronController::writeOption(asynUser *pasynUser, const char *key, const char *value)
+{
+  phytronAxis* pAxis(NULL);
+  enum pollMethod iMethod(pollMethodSerial);
+  epicsInt64 iTmp(-2);
+  int iAxisNo(0);
+  size_t iLen;
+
+  if (!key || !value)
+    goto finish;
+  if (epicsStrCaseCmp(key, "pollMethod") != 0)
+    goto finish;
+
+  getAddress(pasynUser, &iAxisNo);
+  if (iAxisNo > 0) {
+    pAxis = getAxis(iAxisNo);
+    if (!pAxis) {
+      epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
+                    "phytronController:writeOption(%s, %s) wrong axis", key, value);
+      return asynError;
+    }
+    iMethod = pollMethodDefault;
+  }
+  if (epicsParseInt64(value, &iTmp, 0, NULL) == 0) {
+    if (iTmp < (pAxis ? static_cast<epicsInt64>(pollMethodDefault) : static_cast<epicsInt64>(pollMethodSerial)) ||
+        iTmp > static_cast<epicsInt64>(pollMethodControllerParallel))
+      goto wrongValue;
+    iMethod = static_cast<pollMethod>(iTmp);
+  } else {
+    while (isspace(*value)) ++value;
+    iLen = strlen(value);
+    while (iLen > 0 && isspace(value[iLen - 1])) --iLen;
+
+    if (pAxis && ((iLen ==  7 && !epicsStrnCaseCmp(value, "default", 7)) ||
+                  (iLen ==  8 && !epicsStrnCaseCmp(value, "standard", 8)) ||
+                  (iLen == 10 && !epicsStrnCaseCmp(value, "controller", 10))))
+      iMethod = pollMethodDefault;
+    else if ((iLen ==  6 && !epicsStrnCaseCmp(value, "serial", 6)) ||
+             (iLen == 11 && !epicsStrnCaseCmp(value, "no-parallel", 11)) ||
+             (iLen == 12 && !epicsStrnCaseCmp(value, "not-parallel", 12)) ||
+             (iLen ==  3 && !epicsStrnCaseCmp(value, "old", 3)))
+      iMethod = pollMethodSerial;
+    else if ((iLen ==  4 && !epicsStrnCaseCmp(value, "axis", 4)) ||
+             (iLen == 13 && !epicsStrnCaseCmp(value, "axis-parallel", 13)))
+      iMethod = pollMethodAxisParallel;
+    else if ((iLen ==  4 && !epicsStrnCaseCmp(value, "ctrl", 4)) ||
+             (iLen ==  8 && !epicsStrnCaseCmp(value, "parallel", 8)) ||
+             (iLen == 13 && !epicsStrnCaseCmp(value, "ctrl-parallel", 13)) ||
+             (iLen == 19 && !epicsStrnCaseCmp(value, "controller-parallel", 19)))
+      iMethod = pollMethodControllerParallel;
+    else {
+wrongValue:
+      epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
+                    "phytronController:writeOption(%s, %s) wrong value", key, value);
+      return asynError;
+    }
+  }
+  if (pAxis)
+    pAxis->iPollMethod_ = iMethod;
+  else
+    iDefaultPollMethod_ = iMethod;
+  return asynSuccess;
+
+finish:
+  return asynMotorController::writeOption(pasynUser, key, value);
+}
+
 /*
  * Reset the motorEncoderRatio to 1 after the reset of MCM unit
  */
-void phytronController::resetAxisEncoderRatio(){
-
+void phytronController::resetAxisEncoderRatio()
+{
   for(uint32_t i = 0; i < axes.size(); i++){
     setDoubleParam(axes[i]->axisNo_, motorEncoderRatio_, 1);
   }
@@ -451,7 +577,7 @@ void phytronController::resetAxisEncoderRatio(){
   */
 void phytronController::report(FILE *fp, int level)
 {
-  fprintf(fp, "MCB-4B motor driver %s, numAxes=%d, moving poll period=%f, idle poll period=%f\n",
+  fprintf(fp, "Phytron phyMOTION motor driver %s, numAxes=%d, moving poll period=%f, idle poll period=%f\n",
     this->portName, numAxes_, movingPollPeriod_, idlePollPeriod_);
 
   // Call the base class method
@@ -476,85 +602,274 @@ phytronAxis* phytronController::getAxis(int axisNo)
   return dynamic_cast<phytronAxis*>(asynMotorController::getAxis(axisNo));
 }
 
-/**
- * @brief implements phytron specific data fromat
- * @param output
- * @param input
- * @param maxChars
- * @param nread
- * @param timeout
- * @return
+/** Polls the controller depending on configuration (asynSetOption "pollMethod").
+ * This implementation tracks, if it was called at least once.
+ * The Option "pollMethod" configures, how to talk to the controller:
+ * * pollMethodSerial (old and default):
+ *   - 4 single command request and replies: motor position, encoder position,
+ *     moving status, axis status (limit switches, home switches, ...)
+ *   - takes about 40ms per axis
+ * * pollMethodAxisParallel or
+ * * pollMethodControllerParallel:
+ *   - send a longer command string with multiple commands to the controller
+ *   - parses the replies of it (count should be equal to command count)
+ *   - takes about 10ms per command string, which saves time
+ *   - per axis commands are only axis status, motor position, encoder position
+ *     the moving status is part axis status (bit 0)
+ *   - pollMethodAxisParallel combines commands for one axis only
+ *   - pollMethodControllerParallel tries to combine commands to all axes
+ * \return status of the base class
  */
-phytronStatus phytronController::sendPhytronCommand(const char *command, char *response_buffer, size_t response_max_len, size_t *nread)
+asynStatus phytronController::poll()
 {
-    char buffer[255];
-    char* buffer_end=buffer;
-    static const char *functionName = "phytronController::sendPhytronCommand";
-
-    *(buffer_end++)=0x02;                               //STX
-    *(buffer_end++)='0';                                //Module address TODO: add class member
-    buffer_end += sprintf(buffer_end,"%s",command);     //Append command
-    *(buffer_end++)=0x3a;                               //Append separator
-
-    buffer_end += sprintf(buffer_end,"%c%c",'X','X');   //XX disables checksum
-    *(buffer_end++)=0x03;                               //Append ETX
-    *(buffer_end)=0x0;                                  //Null terminate message for saftey
-
-    phytronStatus status = (phytronStatus) writeReadController(buffer,buffer,255,nread, timeout_);
-    if(status){
-        return status;
+  asynStatus iResult;
+  do_initial_readout_ = false;
+  iResult = asynMotorController::poll();
+  if (iResult == asynSuccess) {
+    // check, which axes should be handled here
+    std::vector<phytronAxis*> apTodoAxis;
+    for (std::vector<phytronAxis*>::iterator it = axes.begin(); it != axes.end(); ++it) {
+      phytronAxis* pAxis(*it);
+      if (!pAxis) continue;
+      pollMethod iPollMethod(pAxis->iPollMethod_);
+      if (iPollMethod < 0) iPollMethod = iDefaultPollMethod_;
+      // this axis is configured for controller parallel poll and handled here
+      if (iPollMethod == pollMethodControllerParallel)
+        apTodoAxis.emplace_back(std::move(pAxis));
     }
-
-    char* nack_ack = strchr(buffer,0x02); //Find STX
-    if(!nack_ack){
-        nread=0;
-        status = phytronInvalidReturn;
-        if (status != lastStatus) {
-          asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
-          "%s: Communication failed\n",
-          functionName);
-        }
-        lastStatus = status;
-        return status;
+    if (!apTodoAxis.empty()) {
+      std::vector<std::string> asRequests, asAnswers;
+      asRequests.reserve(3 * apTodoAxis.size());
+      // collect requests
+      for (std::vector<phytronAxis*>::iterator it = apTodoAxis.begin(); it != apTodoAxis.end(); ++it)
+        (*it)->appendRequestString(asRequests);
+      // communicate
+      iResult = phyToAsyn(sendPhytronMultiCommand(asRequests, asAnswers, true));
+      if (iResult == asynSuccess) {
+        // handle answers
+        for (std::vector<phytronAxis*>::iterator it = apTodoAxis.begin(); it != apTodoAxis.end(); ++it)
+          if (!(*it)->parseAnswer(asAnswers))
+            iResult = asynError;
+        if (!asAnswers.empty())
+          iResult = asynError;
+      }
     }
-    lastStatus = phytronSuccess;
-    nack_ack++; //NACK/ACK is one
-    //ACK, extract response
-    if(*nack_ack==0x06){
-        char* separator = strchr(nack_ack,0x3a);          //find separator
+  }
+  return iResult;
+}
 
-        /* Copy data from nack_ack to
-         * separator into buffer */
-        uint32_t len = separator-nack_ack-1;              //calculate length of message
-        if(len > response_max_len) len=response_max_len;
+/**
+ * This hook function makes sure, that the IOC initialization waits until all
+ * controllers were read at least once. This allows the motor record to use
+ * initialized values (at pass 1), especially if an encoder is available and
+ * was configured to be used. Every controller has its own poller thread, this
+ * function is called by the main thread, so this blocking is not a dead lock.
+ * \param[in] iState new state information
+ */
+void phytronController::epicsInithookFunction(initHookState iState)
+{
+  if (iState != initHookAfterInitDevSup)
+    return;
 
-        memcpy(response_buffer,nack_ack+1,len);           //copy payload to destination
-        response_buffer[separator-nack_ack-1]=0;          //Add NULL terminator
-
-        *nread=strlen(response_buffer);
+  // before motorRecord init_record pass 1
+  for (vector<phytronController*>::iterator itC = controllers.begin();
+       itC != controllers.end(); ++itC) {
+    // iterate over all controllers
+    phytronController* pC(*itC);
+    while (pC) {
+      // wait until the controller was polled once
+      bool did_initial_readout(false);
+      pC->lock();
+      did_initial_readout = !pC->do_initial_readout_;
+      pC->unlock();
+      if (did_initial_readout) // done
+        break;
+      epicsThreadSleep(0.1); // not done: wait some time
     }
-    //NAK return error
-    else if(*nack_ack==0x15){
-        nread=0;
-        status = phytronInvalidReturn;
-        if (status != lastStatus) {
-          asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
-          "%s: Nack sent by the controller\n",
-          functionName);
-        }
-        lastStatus = status;
-        return status;
+  }
+}
+
+/**
+ * \brief implements phytron specific data format:
+ *        send commands to Phytron controller as one command line, await
+ *        answer and check for ACK/NAK.
+ *        Note: Phytron told us, that the controller handles up to 1000 bytes of input and 2000 bytes on output.
+ * \param[in]  sCommand   input command line
+ * \param[out] sResponse  answer output
+ * \param[in]  bACKonly   false: allow ACK and NAK, true: allow ACK only
+ * \return communication status
+ */
+phytronStatus phytronController::sendPhytronCommand(std::string sCommand, std::string &sResponse, bool bACKonly)
+{
+  if (sCommand.size() > 994) // maximum command length exceeded (1000 bytes incl. framing)
+    return phytronInvalidCommand;
+  if (sCommand.capacity() < sCommand.size() + 6)
+    sCommand.reserve(sCommand.size() + 6);
+  sCommand.insert(0, "0"); // address of controller, TODO: allow different values for serial connection
+  sCommand.push_back(':'); // separator for CRC
+  epicsUInt8 byCRC(0);
+  for (auto it = sCommand.begin(); it != sCommand.end(); ++it)
+    byCRC ^= static_cast<epicsUInt8>(*it); // "calculate" CRC
+  epicsUInt8 byCRC2(byCRC & 0x0F);
+  byCRC >>= 4;
+  // put framing incl. CRC
+  sCommand.insert(0, "\x02"); // STX
+  sCommand.push_back(static_cast<char>(byCRC  + ((byCRC  > 9) ? ('A' - 10) : '0')));
+  sCommand.push_back(static_cast<char>(byCRC2 + ((byCRC2 > 9) ? ('A' - 10) : '0')));
+  sCommand.push_back('\x03'); // ETX
+
+  // communicate
+  sResponse.resize(2010); // this is the maximum expected answer size: 2000 bytes plus framing
+  size_t nRead(0);
+  phytronStatus iResult(static_cast<phytronStatus>(writeReadController(sCommand.c_str(), &sResponse[0], sResponse.size(), &nRead, timeout_)));
+  if (iResult != phytronSuccess)
+    return iResult;
+  if (nRead < 0 || nRead > sResponse.size())
+    return phytronInvalidReturn;
+  sResponse.resize(nRead);
+
+  // check answer
+  auto it(sResponse.find_first_of('\x02'));
+  if (it == std::string::npos)
+    return phytronInvalidReturn;
+  sResponse.erase(0, ++it); // remove STX and garbage before
+  it = sResponse.find_first_of('\x03');
+  if (it == std::string::npos)
+    return phytronInvalidReturn;
+  sResponse.erase(it); // remove ETX and garbage behind
+  size_t i(sResponse.size());
+  if (i > 3 && sResponse[i - 3] == ':') { // CRC appended
+    if (!isalnum(sResponse[i - 2]) || !isalnum(sResponse[i - 1]))
+      return phytronInvalidReturn;
+    if (toupper(sResponse[i - 2]) != 'X' || toupper(sResponse[i - 1]) != 'X') {
+      // check CRC
+      byCRC = 0;
+      for (size_t j = 0; j < (i - 2); ++j)
+        byCRC ^= sResponse[j];
+      byCRC2 = byCRC & 0x0F;
+      byCRC >>= 4;
+      if (toupper(sResponse[i - 2]) != static_cast<char>(byCRC  + ((byCRC  > 9) ? ('A' - 10) : '0')) ||
+          toupper(sResponse[i - 1]) != static_cast<char>(byCRC2 + ((byCRC2 > 9) ? ('A' - 10) : '0')))
+        return phytronInvalidReturn; // CRC invalid
     }
-    lastStatus = phytronSuccess;
+    sResponse.resize(i - 3); // remove separator and CRC
+  }
+  if (!sResponse.empty()) {
+    switch (sResponse.front()) { // answer should start with ACK or NAK
+      case '\x06': // ACK
+        if (bACKonly)
+          sResponse.erase(0, 1);
+        return phytronSuccess;
+      case '\x15': // NAK
+        if (bACKonly)
+          return phytronSuccess;
+        break;
+      default:
+        break;
+    }
+  }
+  return phytronInvalidReturn;
+}
 
-    return status;
+/**
+ * \brief implements phytron specific data format:
+ *        send commands to Phytron controller as one command line, await
+ *        answer and check for ACK/NAK.
+ *        Note: Phytron told us, that the controller handles up to 1000 bytes of input and 2000 bytes on output.
+ * \param[in]  sCommand   input command line
+ * \param[out] psResponse pointer to answer output or NULL/nullptr (discard answer)
+ * \param[in]  bACKonly   false: allow ACK and NAK, true: allow ACK only
+ * \return communication status
+ */
+phytronStatus phytronController::sendPhytronCommand(std::string sCommand, std::string* psResponse, bool bACKonly)
+{
+  std::string sTmp;
+  if (!psResponse) psResponse = &sTmp;
+  return sendPhytronCommand(sCommand, *psResponse, bACKonly);
+}
 
+/**
+ * \brief Implements phytron specific data format:
+ *        send commands to Phytron controller as one command line, await
+ *        answer, split answer into separate strings and check for ACK/NAK.
+ *        This function will make sure, that a maximum of 42 commands are sent at once.
+ *        If there are more, a second (third...) call will be made.
+ * \param[in]  asCommands    input vector of command strings
+ * \param[out] asResponses   output vector of answers
+ * \param[in]  bAllowNAK     false: do not allow NAK, remove ACK characters from answer --> look at return value;
+ *                           true: allow NAK, keep ACK/NAK in answers
+ * \param[in]  bForceSingle  false: try to combine all requests together
+ *                           true: call one by one
+ * \return communication status
+ */
+phytronStatus phytronController::sendPhytronMultiCommand(std::vector<std::string> asCommands,
+    std::vector<std::string> &asResponses, bool bAllowNAK, bool bForceSingle)
+{
+  std::string sCommand, sResponse;
+  size_t iCommands(asCommands.size()), iMaxLen(0);
+  int iCount, iMaxCmdCount;
+  asResponses.clear();
+
+  for (;;) {
+    // get needed string length
+    iMaxLen = 0;
+    iCount = 0;
+    iMaxCmdCount = bForceSingle ? 1 : 42;
+    for (auto it = asCommands.begin();
+         it != asCommands.end() && iCount < iMaxCmdCount; ++it, ++iCount) {
+      iMaxLen += it->size() + 1;
+      if (it->empty())
+        return phytronInvalidCommand;
+      if (iMaxLen > 994) // max length for a single command line
+        break;
+    }
+    if (iMaxLen < 1)
+      return phytronInvalidCommand;
+
+    // merge single commands to one command line
+    sCommand.clear();
+    sCommand.reserve(iMaxLen);
+    iMaxCmdCount = iCount;
+    iCount = 0;
+    for (auto it = asCommands.begin();
+         it != asCommands.end() && sCommand.size() < iMaxLen && iCount < iMaxCmdCount;
+         ++it, ++iCount) {
+      if (!sCommand.empty())
+        sCommand.append(" ");
+      sCommand.append(*it);
+    }
+    asCommands.erase(asCommands.begin(), asCommands.begin() + iCount);
+
+    // communicate
+    phytronStatus iResult(sendPhytronCommand(sCommand, sResponse, false));
+    if (iResult != phytronSuccess) return iResult;
+    // split answers
+    while (!sResponse.empty()) {
+      std::string::size_type i;
+      for (i = 1; i < sResponse.size(); ++i)
+        if (sResponse[i] == '\x06' || sResponse[i] == '\x15')
+          break;
+      if (!bAllowNAK) {
+        if (sResponse[0] != '\x06') // only ACK allowed
+          return phytronInvalidReturn;
+        asResponses.emplace_back(sResponse.substr(1, i - 1));
+      }
+      else
+        asResponses.emplace_back(sResponse.substr(0, i));
+      sResponse.erase(0, i);
+    }
+    if (asCommands.empty())
+      break;
+  }
+  // number of commands and answers have to match
+  return (iCommands == asResponses.size()) ? phytronSuccess : phytronInvalidReturn;
 }
 
 /** Castst phytronStatus to asynStatus enumeration
  * \param[in] phyStatus
  */
-asynStatus phytronController::phyToAsyn(phytronStatus phyStatus){
+asynStatus phytronController::phyToAsyn(phytronStatus phyStatus)
+{
   if(phyStatus == phytronInvalidReturn || phyStatus == phytronInvalidCommand) return asynError;
   return (asynStatus) phyStatus;
 }
@@ -570,8 +885,8 @@ asynStatus phytronController::phyToAsyn(phytronStatus phyStatus){
   * \param[in] module            Index of the I1AM01 module controlling this axis
   * \param[in] axis              Axis index
   */
-extern "C" int phytronCreateAxis(const char* controllerName, int module, int axis){
-
+extern "C" int phytronCreateAxis(const char* controllerName, int module, int axis)
+{
   phytronAxis *pAxis;
 
   //Find the controller
@@ -593,6 +908,44 @@ extern "C" int phytronCreateAxis(const char* controllerName, int module, int axi
   return asynSuccess;
 }
 
+/** Configures a phytronAxis object to use a brake
+ * \param[in] szControllerName    Name of the asyn port created by calling phytronCreateController from st.cmd
+ * \param[in] fAxis               axis index (module.index)
+ * \param[in] fOutput             digital out index (module.index) or 0 to disable this function, negative value inverts output
+ * \param[in] bDisableMotor       0=keep motor enabled, 1=disable idle motor/enable when moved
+ * \param[in] dEngageTime         time to engage brake (disable motor after this time in milliseconds, max. 10 sec)
+ * \param[in] dReleaseTime        time to release brake (start move after this time in milliseconds, max. 10 sec)
+ */
+extern "C" int phytronBrakeOutput(const char* szControllerName, float fAxis, float fOutput, int bDisableMotor, double dEngageTime, double dReleaseTime)
+{
+  char szAxisNo[5];
+  uint32_t i, j;
+  epicsSnprintf(szAxisNo, sizeof(szAxisNo), "%.1f", fAxis);
+  szAxisNo[sizeof(szAxisNo) - 1] = '\0';
+  if (!szControllerName || !*szControllerName)
+    goto failed;
+  for (i = 0; i < controllers.size(); ++i) {
+    phytronController* pC(controllers[i]);
+    if (!pC || strcmp(pC->controllerName_, szControllerName) != 0)
+      continue;
+    // found controller, search axis
+    for (j = 0; j < pC->axes.size(); ++j) {
+      phytronAxis* pA(pC->axes[j]);
+      if (!pA || strcmp(pA->axisModuleNo_, szAxisNo) != 0)
+        continue;
+
+      // found axis on controller: store data
+      return pA->configureBrake(fOutput, bDisableMotor != 0,
+                                dEngageTime / 1000., dReleaseTime / 1000.);
+    }
+    break; // controller found, but not axis
+  }
+
+failed:
+  printf("ERROR: phytronBrakeOutput: Controller %s is not registered or axis %s not found\n", szControllerName, szAxisNo);
+  return asynError;
+}
+
 /** Creates a new phytronAxis object.
   * \param[in] pC Pointer to the phytronController to which this axis belongs.
   * \param[in] axisNo Index number of this axis, range 0 to pC->numAxes_-1.
@@ -600,19 +953,23 @@ extern "C" int phytronCreateAxis(const char* controllerName, int module, int axi
   * Initializes register numbers, etc.
   */
 phytronAxis::phytronAxis(phytronController *pC, int axisNo)
-  : asynMotorAxis(pC, axisNo),
-    axisModuleNo_((float)axisNo/10),
-    pC_(pC),
-    response_len(0)
+  : asynMotorAxis(pC, axisNo)
+  , brakeOutput_(0.0)
+  , disableMotor_(0)
+  , brakeEngageTime_(0.0)
+  , brakeReleaseTime_(0.0)
+  , pC_(pC)
+  , lastStatus(phytronSuccess)
+  , brakeReleased_(0)
+  , iPollMethod_(pollMethodDefault)
+  , homeState_(0)
 {
-
   //Controller always supports encoder. Encoder enable/disable is set through UEIP
   setIntegerParam(pC_->motorStatusHasEncoder_, 1);
-
   setDoubleParam(pC_->motorEncoderRatio_, 1);
-
+  epicsSnprintf(axisModuleNo_, sizeof(axisModuleNo_), "%.1f", axisNo / 10.);
+  axisModuleNo_[sizeof(axisModuleNo_) - 1] = '\0';
 }
-
 
 /** Reports on status of the axis
   * \param[in] fp The file pointer on which report information will be written
@@ -633,91 +990,167 @@ void phytronAxis::report(FILE *fp, int level)
 
 /** Sets velocity parameters before the move is executed. Controller produces a
  * trapezoidal speed profile defined by these parmeters.
- * \param[in] minVelocity   Start velocity
- * \param[in] maxVelocity   Maximum velocity
- * \param[in] moveType      Type of movement determines which controller speed parameters are set
+ * \param[in,out] pCmdList      list of commands to append to or NULL (execute directly)
+ * \param[in]     minVelocity   Start velocity
+ * \param[in]     maxVelocity   Maximum velocity
+ * \param[in]     moveType      Type of movement determines which controller speed parameters are set
  */
-phytronStatus phytronAxis::setVelocity(double minVelocity, double maxVelocity, int moveType)
+phytronStatus phytronAxis::setVelocity(std::vector<std::string>* pCmdList, double minVelocity, double maxVelocity, int moveType)
 {
+  std::vector<std::string> asRequests;
+  enum pollMethod iPollMethod(iPollMethod_);
+  if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
+  if (!pCmdList) pCmdList = &asRequests;
 
-  phytronStatus maxStatus = phytronSuccess;
-  phytronStatus minStatus = phytronSuccess;
   maxVelocity = fabs(maxVelocity);
   minVelocity = fabs(minVelocity);
 
   if(maxVelocity > MAX_VELOCITY){
     maxVelocity = MAX_VELOCITY;
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_WARNING,
+    asynPrint(pasynUser_, ASYN_TRACE_WARNING,
               "phytronAxis::setVelocity: Failed for axis %d - Velocity %f is to high, setting to"
               "maximum velocity: %d!\n", axisNo_, maxVelocity, MAX_VELOCITY);
   } else if (maxVelocity < MIN_VELOCITY){
     maxVelocity = MIN_VELOCITY;
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_WARNING,
+    asynPrint(pasynUser_, ASYN_TRACE_WARNING,
               "phytronAxis::setVelocity: Failed for axis %d - Velocity %f is to low, setting to"
               "minimum velocity: %d!\n", axisNo_, maxVelocity, MIN_VELOCITY);
   }
 
   if(minVelocity > MAX_VELOCITY){
     minVelocity = MAX_VELOCITY;
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_WARNING,
+    asynPrint(pasynUser_, ASYN_TRACE_WARNING,
               "phytronAxis::setVelocity: Failed for axis %d - Velocity %f is to high, setting to"
               "maximum velocity: %d!\n", axisNo_, maxVelocity, MAX_VELOCITY);
   } else if (minVelocity < MIN_VELOCITY){
     minVelocity = MIN_VELOCITY;
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_WARNING,
+    asynPrint(pasynUser_, ASYN_TRACE_WARNING,
               "phytronAxis::setVelocity: Failed for axis %d - Velocity %f is to low, setting to"
               "minimum velocity: %d!\n", axisNo_, minVelocity, MIN_VELOCITY);
   }
 
-
-  if(moveType == stdMove){
-    //Set maximum velocity (P14)
-    sprintf(pC_->outString_, "M%.1fP14=%f", axisModuleNo_, maxVelocity);
-    maxStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-
-    //Set minimum velocity (P04)
-    sprintf(pC_->outString_, "M%.1fP04=%f", axisModuleNo_, minVelocity);
-    minStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-  } else if (moveType == homeMove){
-    //Set maximum velocity (P08)
-    sprintf(pC_->outString_, "M%.1fP08=%f", axisModuleNo_, maxVelocity);
-    maxStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-
-    //Set minimum velocity (P10)
-    sprintf(pC_->outString_, "M%.1fP10=%f", axisModuleNo_, minVelocity);
-    minStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
+  switch (moveType) {
+    case stdMove:  //Set maximum velocity (P14) and minimum velocity (P04)
+      pCmdList->push_back(std::string("M") + axisModuleNo_ + "P14=" + std::to_string(maxVelocity));
+      pCmdList->push_back(std::string("M") + axisModuleNo_ + "P04=" + std::to_string(minVelocity));
+      break;
+    case homeMove: //Set maximum velocity (P08) and minimum velocity (P10)
+      pCmdList->push_back(std::string("M") + axisModuleNo_ + "P08=" + std::to_string(maxVelocity));
+      pCmdList->push_back(std::string("M") + axisModuleNo_ + "P10=" + std::to_string(minVelocity));
+      break;
+    default:
+      return phytronSuccess;
   }
-
-  return (maxStatus > minStatus) ? maxStatus : minStatus;
+  if (pCmdList != &asRequests) return phytronSuccess;
+  return pC_->sendPhytronMultiCommand(asRequests, asRequests, false, iPollMethod == pollMethodSerial);
 }
 
 /** Sets acceleration parameters before the move is executed.
- * \param[in] acceleration  Acceleration to be used in the move
- * \param[in] moveType      Type of movement determines which controller acceleration parameters is set
+ * \param[in,out] pCmdList      list of commands to append to or NULL (execute directly)
+ * \param[in]     acceleration  Acceleration to be used in the move
+ * \param[in]     moveType      Type of movement determines which controller acceleration parameters is set
  */
-phytronStatus phytronAxis::setAcceleration(double acceleration, int moveType)
+phytronStatus phytronAxis::setAcceleration(std::vector<std::string>* pCmdList, double acceleration, int moveType)
 {
-  if(acceleration > MAX_ACCELERATION){
+  std::string sCommand;
+  if (acceleration > MAX_ACCELERATION) {
     acceleration = MAX_ACCELERATION;
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_WARNING,
+    asynPrint(pasynUser_, ASYN_TRACE_WARNING,
               "phytronAxis::setAcceleration: Failed for axis %d - Acceleration %f is to high, "
               "setting to maximum acceleration: %d!\n", axisNo_, acceleration, MAX_ACCELERATION);
-  } else if(acceleration < MIN_ACCELERATION){
+  } else if (acceleration < MIN_ACCELERATION) {
     acceleration = MIN_ACCELERATION;
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_WARNING,
+    asynPrint(pasynUser_, ASYN_TRACE_WARNING,
               "phytronAxis::setAcceleration: Failed for axis %d - Acceleration %f is to low, "
               "setting to minimum acceleration: %d!\n", axisNo_, acceleration, MIN_ACCELERATION);
   }
+  sCommand = std::string("M") + axisModuleNo_ + ((moveType == homeMove) ? "P09=" : "P15=") +
+             std::to_string(acceleration);
+  if (!pCmdList)
+    return pC_->sendPhytronCommand(sCommand);
+  pCmdList->push_back(sCommand);
+  return phytronSuccess;
+}
 
-  if (moveType == stdMove){
-    sprintf(pC_->outString_, "M%.1fP15=%f", axisModuleNo_, acceleration);
-  } else if(moveType == homeMove){
-    sprintf(pC_->outString_, "M%.1fP09=%f", axisModuleNo_, acceleration);
-  } else if (moveType == stopMove){
-    sprintf(pC_->outString_, "M%.1fP15=%f", axisModuleNo_, acceleration);
+/** Configure the brake
+ * \param[in] fOutput        digital out index (module.index) or 0 to disable this function, negative value inverts output
+ * \param[in] bDisableMotor  0=keep motor enabled, 1=disable idle motor/enable when moved
+ * \param[in] dEngageTime    time to engage brake (disable motor after this time in seconds, max. 10 sec)
+ * \param[in] dReleaseTime   time to release brake (start move after this time in seconds, max. 10 sec)
+ */
+asynStatus phytronAxis::configureBrake(float fOutput, bool bDisableMotor, double dEngageTime, double dReleaseTime)
+{
+  brakeOutput_  = floor(10.0 * ((fOutput > -100.0 && fOutput < 100.0) ? fOutput : 0.0) + 0.5) / 10.0;
+  disableMotor_ = (disableMotor_ & (~1)) | (bDisableMotor ? 1 : 0);
+  if (dEngageTime  > MAXIMUM_BRAKE_TIME)
+    dEngageTime  = MAXIMUM_BRAKE_TIME;
+  if (dReleaseTime > MAXIMUM_BRAKE_TIME)
+    dReleaseTime = MAXIMUM_BRAKE_TIME;
+  brakeEngageTime_  = dEngageTime  > 0.0 ? dEngageTime  : 0.0;
+  brakeReleaseTime_ = dReleaseTime > 0.0 ? dReleaseTime : 0.0;
+  setBrakeOutput(NULL, brakeReleased_);
+  //printf("setting brake for axis %s: output=%.15g disable=%d engagetime=%.15g releasetime=%.15g released=%d\n",
+  //       axisModuleNo_, brakeOutput_, disableMotor_, brakeEngageTime_, brakeReleaseTime_, brakeReleased_);
+  return asynSuccess;
+}
+
+/** Engage or release brake and eventually wait for some time
+ * \param[in,out] pCmdList          list of commands to append to or NULL (execute directly)
+ * \param[in]     bWantToMoveMotor  flag; false=motor-is-stopped, true=motor-should-be-moved
+ * \return on success: phytronSuccess, on error a code
+ */
+phytronStatus phytronAxis::setBrakeOutput(std::vector<std::string>* pCmdList, bool bWantToMoveMotor)
+{
+  std::vector<std::string> asRequests;
+  //printf("setting brake output for axis %s: wantmove=%d output=%.15g disable=%d engagetime=%.15g releasetime=%.15g released=%d\n",
+  //       axisModuleNo_, bWantToMoveMotor, brakeOutput_, disableMotor_, brakeEngageTime_, brakeReleaseTime_, brakeReleased_);
+  if (!pCmdList) pCmdList = &asRequests;
+  brakeReleased_ = bWantToMoveMotor;
+  if (bWantToMoveMotor) {
+    // activate motor output
+    if (!(disableMotor_ & 2)) {
+      pCmdList->push_back(std::string("M") + axisModuleNo_ + "MA");
+      disableMotor_ |= 2;
+    }
+    if (fabs(brakeOutput_) > 0.0) {
+      // release brake
+      sprintf(pC_->outString_, "A%.1f%c", fabs(brakeOutput_), brakeOutput_ > 0.0 ? 'S' : 'R');
+      pCmdList->push_back(const_cast<const char*>(pC_->outString_));
+    }
+
+    if (pCmdList == &asRequests || brakeReleaseTime_ > 0.0) {
+      pC_->sendPhytronMultiCommand(*pCmdList, asRequests, false, false);
+      pCmdList->clear();
+    }
+
+    if (brakeReleaseTime_ > 0.0)
+      epicsThreadSleep(brakeReleaseTime_);
+    return phytronSuccess;
   }
 
-  return pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
+  if (fabs(brakeOutput_) > 0.0) {
+    // engage brake
+    sprintf(pC_->outString_, "A%.1f%c", fabs(brakeOutput_), brakeOutput_ > 0.0 ? 'R' : 'S');
+    pCmdList->push_back(const_cast<const char*>(pC_->outString_));
+    if (pCmdList == &asRequests || brakeEngageTime_ > 0.0) {
+      pC_->sendPhytronMultiCommand(*pCmdList, asRequests, false, false);
+      pCmdList->clear();
+    }
+
+    if (brakeEngageTime_ > 0.0)
+      epicsThreadSleep(brakeEngageTime_);
+  }
+  if (disableMotor_ & 1) {
+    // deactivate motor output
+    sprintf(pC_->outString_, "M%sMD", axisModuleNo_);
+    pCmdList->push_back(const_cast<const char*>(pC_->outString_));
+    disableMotor_ &= ~2;
+    if (pCmdList == &asRequests) {
+      pC_->sendPhytronMultiCommand(*pCmdList, asRequests, false, false);
+      pCmdList->clear();
+    }
+  }
+  return phytronSuccess;
 }
 
 /** Execute the move.
@@ -729,50 +1162,31 @@ phytronStatus phytronAxis::setAcceleration(double acceleration, int moveType)
  */
 asynStatus phytronAxis::move(double position, int relative, double minVelocity, double maxVelocity, double acceleration)
 {
+  std::vector<std::string> asCommands;
   phytronStatus phyStatus;
+  enum pollMethod iPollMethod(iPollMethod_);
+  if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
 
   //NOTE: Check if velocity is different, before setting it.
-  phyStatus = setVelocity(minVelocity, maxVelocity, stdMove);
-  if(phyStatus){
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::move: Setting the velocity for axis %d to %f failed with error "
-              "code: %d!\n", axisNo_, maxVelocity, phyStatus);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
+  phyStatus = setVelocity(&asCommands, minVelocity, maxVelocity, stdMove);
+  CHECK_AXIS("move", "Setting the velocity", this, return pC_->phyToAsyn(phyStatus));
 
   //NOTE: Check if velocity is different, before setting it.
-  phyStatus = setAcceleration(acceleration, stdMove);
-  if(phyStatus){
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::move: Setting the acceleration for axis %d to %f failed with "
-              "error code: %d!\n", axisNo_, acceleration, phyStatus);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
+  phyStatus = setAcceleration(&asCommands, acceleration, stdMove);
+  CHECK_AXIS("move", "Setting the acceleration", this, return pC_->phyToAsyn(phyStatus));
+
+  setBrakeOutput(&asCommands, 1);
+  CHECK_AXIS("move", "Setting the brake", this, return pC_->phyToAsyn(phyStatus));
 
   if (relative) {
-    sprintf(pC_->outString_, "M%.1f%c%d", axisModuleNo_, position>0 ? '+':'-', abs(NINT(position)));
+    sprintf(pC_->outString_, "M%s%c%d", axisModuleNo_, position>0 ? '+':'-', abs(NINT(position)));
   } else {
-    sprintf(pC_->outString_, "M%.1fA%d", axisModuleNo_, NINT(position));
+    sprintf(pC_->outString_, "M%sA%d", axisModuleNo_, NINT(position));
   }
+  asCommands.push_back(const_cast<const char*>(pC_->outString_));
 
-  phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-  if(phyStatus){
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::move: Moving axis %d failed with error code: %d!\n", axisNo_, phyStatus);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
+  phyStatus = pC_->sendPhytronMultiCommand(asCommands, asCommands, false, iPollMethod == pollMethodSerial);
+  CHECK_AXIS("move", "Start move", this, return pC_->phyToAsyn(phyStatus));
 
   return asynSuccess;
 }
@@ -785,64 +1199,48 @@ asynStatus phytronAxis::move(double position, int relative, double minVelocity, 
  */
 asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acceleration, int forwards)
 {
+  std::vector<std::string> asCommands;
   phytronStatus phyStatus;
   int homingType;
-  
-  pC_->getIntegerParam(axisNo_, pC_->homingProcedure_, &homingType);
-  if(homingType==limit) {
-      homeForward = forwards;
-      homeState = 1;
-  }
-  phyStatus =  setVelocity(minVelocity, maxVelocity, homeMove);
-  if(phyStatus){
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-        "phytronAxis::home: Setting the velocity for axis %d to %f failed with error "
-        "code: %d!\n", axisNo_, maxVelocity, phyStatus);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
+  enum pollMethod iPollMethod(iPollMethod_);
+  if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
 
-  phyStatus =  setAcceleration(acceleration, homeMove);
-  if(phyStatus){
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-        "phytronAxis::home: Setting the acceleration for axis %d to %f failed with "
-        "error code: %d!\n", axisNo_, acceleration, phyStatus);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
+  pC_->getIntegerParam(axisNo_, pC_->homingProcedure_, &homingType);
+  if (homingType == limit)
+    homeState_ = forwards ? 3 : 2;
+
+  phyStatus =  setVelocity(&asCommands, minVelocity, maxVelocity, homeMove);
+  CHECK_AXIS("home", "Setting the velocity", this, return pC_->phyToAsyn(phyStatus));
+
+  phyStatus =  setAcceleration(&asCommands, acceleration, homeMove);
+  CHECK_AXIS("home", "Setting the acceleration", this, return pC_->phyToAsyn(phyStatus));
+
+  setBrakeOutput(&asCommands, 1);
+  CHECK_AXIS("home", "Setting the brake", this, return pC_->phyToAsyn(phyStatus));
 
   if(forwards){
-    if(homingType == limit) sprintf(pC_->outString_, "M%.1fR+", axisModuleNo_);
-    else if(homingType == center) sprintf(pC_->outString_, "M%.1fR+C", axisModuleNo_);
-    else if(homingType == encoder) sprintf(pC_->outString_, "M%.1fR+I", axisModuleNo_);
-    else if(homingType == limitEncoder) sprintf(pC_->outString_, "M%.1fR+^I", axisModuleNo_);
-    else if(homingType == centerEncoder) sprintf(pC_->outString_, "M%.1fR+C^I", axisModuleNo_);
+    if(homingType == limit) sprintf(pC_->outString_, "M%sR+", axisModuleNo_);
+    else if(homingType == center) sprintf(pC_->outString_, "M%sR+C", axisModuleNo_);
+    else if(homingType == encoder) sprintf(pC_->outString_, "M%sR+I", axisModuleNo_);
+    else if(homingType == limitEncoder) sprintf(pC_->outString_, "M%sR+^I", axisModuleNo_);
+    else if(homingType == centerEncoder) sprintf(pC_->outString_, "M%sR+C^I", axisModuleNo_);
     //Homing procedures for rotational movements (no hardware limit switches)
-    else if(homingType == referenceCenter) sprintf(pC_->outString_, "M%.1fRC+", axisModuleNo_);
-    else if(homingType == referenceCenterEncoder) sprintf(pC_->outString_, "M%.1fRC+^I", axisModuleNo_);
+    else if(homingType == referenceCenter) sprintf(pC_->outString_, "M%sRC+", axisModuleNo_);
+    else if(homingType == referenceCenterEncoder) sprintf(pC_->outString_, "M%sRC+^I", axisModuleNo_);
   } else {
-    if(homingType == limit) sprintf(pC_->outString_, "M%.1fR-", axisModuleNo_);
-    else if(homingType == center) sprintf(pC_->outString_, "M%.1fR-C", axisModuleNo_);
-    else if(homingType == encoder) sprintf(pC_->outString_, "M%.1fR-I", axisModuleNo_);
-    else if(homingType == limitEncoder) sprintf(pC_->outString_, "M%.1fR-^I", axisModuleNo_);
-    else if(homingType == centerEncoder) sprintf(pC_->outString_, "M%.1fR-C^I", axisModuleNo_);
+    if(homingType == limit) sprintf(pC_->outString_, "M%sR-", axisModuleNo_);
+    else if(homingType == center) sprintf(pC_->outString_, "M%sR-C", axisModuleNo_);
+    else if(homingType == encoder) sprintf(pC_->outString_, "M%sR-I", axisModuleNo_);
+    else if(homingType == limitEncoder) sprintf(pC_->outString_, "M%sR-^I", axisModuleNo_);
+    else if(homingType == centerEncoder) sprintf(pC_->outString_, "M%sR-C^I", axisModuleNo_);
     //Homing procedures for rotational movements (no hardware limit switches)
-    else if(homingType == referenceCenter) sprintf(pC_->outString_, "M%.1fRC-", axisModuleNo_);
-    else if(homingType == referenceCenterEncoder) sprintf(pC_->outString_, "M%.1fRC-^I", axisModuleNo_);
+    else if(homingType == referenceCenter) sprintf(pC_->outString_, "M%sRC-", axisModuleNo_);
+    else if(homingType == referenceCenterEncoder) sprintf(pC_->outString_, "M%sRC-^I", axisModuleNo_);
   }
+  asCommands.push_back(const_cast<const char*>(pC_->outString_));
 
-  phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-  if(phyStatus){
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::home: Moving axis %d failed with error code: %d!\n", axisNo_, phyStatus);
-    return pC_->phyToAsyn(phyStatus);
-  }
+  phyStatus = pC_->sendPhytronMultiCommand(asCommands, asCommands, false, iPollMethod == pollMethodSerial);
+  CHECK_AXIS("home", "Start homing", this, return pC_->phyToAsyn(phyStatus));
 
   return asynSuccess;
 }
@@ -854,35 +1252,23 @@ asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acce
  */
 asynStatus phytronAxis::moveVelocity(double minVelocity, double maxVelocity, double acceleration)
 {
+  std::vector<std::string> asCommands;
   phytronStatus phyStatus;
+  enum pollMethod iPollMethod(iPollMethod_);
+  if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
 
-  phyStatus = setVelocity(minVelocity, maxVelocity, stdMove);
-  if(phyStatus){
+  phyStatus = setVelocity(&asCommands, minVelocity, maxVelocity, stdMove);
+  CHECK_AXIS("moveVelocity", "Setting the velocity", this, );
 
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-             "phytronAxis::moveVelocity: Setting the velocity for axis %d to %f failed with error "
-             "code: %d!\n", axisNo_, maxVelocity, phyStatus);
-  }
+  phyStatus = setAcceleration(&asCommands, acceleration, stdMove);
+  CHECK_AXIS("moveVelocity", "Setting the acceleration", this, );
 
-  phyStatus = setAcceleration(acceleration, stdMove);
-  if(phyStatus){
-   asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-             "phytronAxis::moveVelocity: Setting the acceleration for axis %d to %f failed with "
-             "error code: %d!\n", axisNo_, acceleration, phyStatus);
-  }
+  setBrakeOutput(&asCommands, 1);
 
-  if(maxVelocity < 0) {
-    sprintf(pC_->outString_, "M%.1fL-", axisModuleNo_);
-  } else {
-    sprintf(pC_->outString_, "M%.1fL+", axisModuleNo_);
-  }
+  asCommands.push_back(std::string("M") + axisModuleNo_ + (maxVelocity < 0. ? "L-" : "L+"));
 
-  phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-  if(phyStatus){
-    asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::moveVelocity: Moving axis %d failed with error code: %d!\n", axisNo_, phyStatus);
-    return pC_->phyToAsyn(phyStatus);
-  }
+  phyStatus = pC_->sendPhytronMultiCommand(asCommands, asCommands, false, iPollMethod == pollMethodSerial);
+  CHECK_AXIS("moveVelocity", "Start move", this, return pC_->phyToAsyn(phyStatus));
 
   return asynSuccess;
 }
@@ -892,58 +1278,44 @@ asynStatus phytronAxis::moveVelocity(double minVelocity, double maxVelocity, dou
  */
 asynStatus phytronAxis::stop(double acceleration)
 {
+  std::vector<std::string> asCommands;
   phytronStatus phyStatus;
+  enum pollMethod iPollMethod(iPollMethod_);
+  if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
 
-  phyStatus = setAcceleration(acceleration, stopMove);
+  phyStatus = setAcceleration(&asCommands, acceleration, stopMove);
+  CHECK_AXIS("stop", "Setting the acceleration", this, );
 
-  if(phyStatus){
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-            "phytronAxis::stop: Setting the acceleration for axis %d to %f failed with "
-            "error code: %d!\n", axisNo_, acceleration, phyStatus);
-    }
-  }
-  lastStatus = phyStatus;
-
-  sprintf(pC_->outString_, "M%.1fS", axisModuleNo_);
-  phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-  if(phyStatus){
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::stop: Stopping axis %d failed with error code: %d!\n", axisNo_, phyStatus);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
+  asCommands.push_back(std::string("M") + axisModuleNo_ + "S");
+  phyStatus = pC_->sendPhytronMultiCommand(asCommands, asCommands, false, iPollMethod == pollMethodSerial);
+  CHECK_AXIS("stop", "Stop move", this, return pC_->phyToAsyn(phyStatus));
 
   return asynSuccess;
 }
 
 //NOTE: Use this for step-slip check?
-asynStatus phytronAxis::setEncoderRatio(double ratio){
-
+asynStatus phytronAxis::setEncoderRatio(double ratio)
+{
   phytronStatus phyStatus;
+  double encoderPosition;
+  std::string sResponse;
 
-  sprintf(pC_->outString_, "M%.1fP39=%f", axisModuleNo_, 1/ratio);
-  phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-  if(phyStatus){
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::setEncoderRatio: Failed for axis %d with status %d!\n", axisNo_, phyStatus);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
+  phyStatus = pC_->sendPhytronCommand(std::string("M") + axisModuleNo_ + "P22R", sResponse);
+  if (phyStatus == phytronSuccess)
+    if (epicsParseDouble(sResponse.c_str(), &encoderPosition, NULL) != 0)
+      phyStatus = phytronInvalidReturn;
+  CHECK_AXIS("setEncoderRatio", "Reading encoder position", this, return pC_->phyToAsyn(phyStatus));
 
+  phyStatus = pC_->sendPhytronCommand(std::string("M") + axisModuleNo_ + "P39=" + std::to_string(1. / ratio), sResponse);
+  CHECK_AXIS("setEncoderRatio", "Setting ratio", this, return pC_->phyToAsyn(phyStatus));
+
+  setDoubleParam(pC_->motorEncoderPosition_, encoderPosition * ratio);
   return asynSuccess;
 }
 
 //NOTE: Keep this for step-slip check?
-asynStatus phytronAxis::setEncoderPosition(double position){
-
-
+asynStatus phytronAxis::setEncoderPosition(double position)
+{
   return asynError;
 }
 
@@ -952,160 +1324,195 @@ asynStatus phytronAxis::setEncoderPosition(double position){
  */
 asynStatus phytronAxis::setPosition(double position)
 {
-  phytronStatus phyStatus = phytronSuccess;
+  phytronStatus phyStatus;
 
-  sprintf(pC_->outString_, "M%.1fP20=%f", axisModuleNo_, position);
-  phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-  if(phyStatus){
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::setPosition: Setting position %f on axis %d failed with error code: %d!\n", position, axisNo_, phyStatus);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
+  sprintf(pC_->outString_, "M%sP20=%f", axisModuleNo_, position);
+  phyStatus = pC_->sendPhytronCommand(const_cast<const char*>(pC_->outString_));
+  CHECK_AXIS("setPosition", "Setting motor position", this, return pC_->phyToAsyn(phyStatus));
 
   return asynSuccess;
 }
 
-/** Polls the axis.
-  * This function reads the motor position, the limit status, the home status, the moving status,
-  * and the drive power-on status.
-  * It calls setIntegerParam() and setDoubleParam() for each item that it polls,
-  * and then calls callParamCallbacks() at the end.
-  * \param[out] moving A flag that is set indicating that the axis is moving (true) or done (false).
-  */
+/** Polls the axis depending on configuration (asynSetOption "pollMethod").
+ * pollMethodDefault: apply controller setting for this axis (see below)
+ * pollMethodSerial (old or default):
+ * - 4 single command request and replies: motor position, encoder position,
+ *   moving status, axis status (limit switches, home switches, ...)
+ * - takes about 40ms per axis
+ * pollMethodAxisParallel:
+ * pollMethodControllerParallel:
+ * - send a longer command string with multiple commands to the controller
+ * - parses the replies of it (count should be equal to command count)
+ * - takes about 10ms per command string and reply string, which saves time
+ * - per axis commands are only axis status, motor position, encoder position
+ *   the moving status is part axis status (bit 0)
+ * - pollMethodAxisParallel combines commands for one axis only
+ * - pollMethodControllerParallel tries to combine commands to all axes (max. 42 commands)
+ *   which goes near the maximum controller possibilities (1000 byte in, 2000 byte out)
+ * \param[out] moving A flag that is set indicating that the axis is moving (true) or done (false).
+ * \return status, if this was successful
+ */
 asynStatus phytronAxis::poll(bool *moving)
 {
-  int axisStatus;
-  double position;
-  double encoderPosition;
-  double encoderRatio;
-  phytronStatus phyStatus;
-
-  // Read the current motor position
-  sprintf(pC_->outString_, "M%.1fP20R", axisModuleNo_);
-  phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-  if(phyStatus){
-    setIntegerParam(pC_->motorStatusProblem_, 1);
-    callParamCallbacks();
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-             "phytronAxis::poll: Reading axis position failed for axis: %d!\n", axisNo_);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
+  int iDone(0);
+  enum pollMethod iPollMethod(iPollMethod_);
+  std::vector<std::string> asRequests, asAnswers;
+  phytronStatus phyStatus(phytronSuccess);
+  if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
+  switch (iPollMethod) {
+    case pollMethodSerial:
+    case pollMethodAxisParallel:
+      appendRequestString(asRequests); // get commands
+      // communicate
+      phyStatus = pC_->sendPhytronMultiCommand(asRequests, asAnswers, false, iPollMethod == pollMethodSerial);
+      if (phyStatus == phytronSuccess) // on success: parse answers
+	if (!parseAnswer(asAnswers) || !asAnswers.empty())
+	  phyStatus = phytronInvalidReturn;
+      CHECK_AXIS("poll", "Reading axis", this, setIntegerParam(pC_->motorStatusProblem_, 1); \
+        callParamCallbacks(); pC_->phyToAsyn(phyStatus));
+      break;
+    default:
+      break;
   }
-  lastStatus = phyStatus;
-  position = atof(pC_->inString_);
-  setDoubleParam(pC_->motorPosition_, position);
-
-  // Read the current encoder value
-  sprintf(pC_->outString_, "M%.1fP22R", axisModuleNo_);
-  phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-  if(phyStatus){
-    setIntegerParam(pC_->motorStatusProblem_, 1);
-    callParamCallbacks();
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-             "phytronAxis::poll: Reading encoder value failed for axis: %d!\n", axisNo_);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
-  encoderPosition = atof(pC_->inString_);
-
-  /*
-   * The encoder position returned by the controller is weighted by the controller
-   * resolutio. To get absolute encoder position, the received position must be
-   * multiplied by the encoder resolution.
-   */
-  pC_->getDoubleParam(axisNo_, pC_->motorEncoderRatio_, &encoderRatio);
-  setDoubleParam(pC_->motorEncoderPosition_, encoderPosition*encoderRatio);
-
-  // Read the moving status of this motor
-  sprintf(pC_->outString_, "M%.1f==H", axisModuleNo_);
-  phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-  if(phyStatus){
-    setIntegerParam(pC_->motorStatusProblem_, 1);
-    callParamCallbacks();
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-              "phytronAxis::poll: Reading axis moving status failed for axis: %d!\n", axisNo_);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
-  *moving = (pC_->inString_[0] == 'E') ? 0:1;
-  setIntegerParam(pC_->motorStatusDone_, !*moving);
-
-  sprintf(pC_->outString_, "M%.1fSE", axisModuleNo_);
-  phyStatus = pC_->sendPhytronCommand(pC_->outString_, pC_->inString_, MAX_CONTROLLER_STRING_SIZE, &this->response_len);
-  if(phyStatus){
-    setIntegerParam(pC_->motorStatusProblem_, 1);
-    callParamCallbacks();
-    if (phyStatus != lastStatus) {
-      asynPrint(pC_->pasynUserSelf, ASYN_TRACE_ERROR,
-             "phytronAxis::poll: Reading axis status failed for axis: %d!\n", axisNo_);
-      lastStatus = phyStatus;
-    }
-    return pC_->phyToAsyn(phyStatus);
-  }
-  lastStatus = phyStatus;
-  axisStatus = atoi(pC_->inString_);
-
-// workaround for home on limit switch
-  if(homeState==0) {
-      setIntegerParam(pC_->motorStatusHighLimit_, (axisStatus & 0x10)/0x10);
-      setIntegerParam(pC_->motorStatusLowLimit_, (axisStatus & 0x20)/0x20);
-  }
-  else {    // homing was started
-    if(homeForward) {
-        setIntegerParam(pC_->motorStatusLowLimit_, (axisStatus & 0x20)/0x20);
-    }
-    else {
-        setIntegerParam(pC_->motorStatusHighLimit_, (axisStatus & 0x10)/0x10);
-    }
-    switch(homeState) {
-        case 1: // home started wait for moving
-            if(*moving)
-                homeState = 2;
-            break;
-        case 2: // wait for move done
-        case 3: // tell record about limit reached
-        case 4:
-            if(! (*moving)) {
-                homeState++;
-                if(homeForward)
-                    setIntegerParam(pC_->motorStatusHighLimit_, 1);
-                else
-                    setIntegerParam(pC_->motorStatusLowLimit_, 1);
-            }
-            if( homeState==4 ) 
-                homeState = 0;
-            break;
-    }
-  }
-// workaround  END
-
-  setIntegerParam(pC_->motorStatusAtHome_, (axisStatus & 0x40)/0x40);
-
-  setIntegerParam(pC_->motorStatusHomed_, (axisStatus & 0x08)/0x08);
-  setIntegerParam(pC_->motorStatusHome_, (axisStatus & 0x08)/0x08);
-
-  setIntegerParam(pC_->motorStatusSlip_, (axisStatus & 0x4000)/0x4000);
-
-  //Update the axis status record ($(P)$(M)_STATUS)
-  setIntegerParam(pC_->axisStatus_, axisStatus);
-
-  //No problem occurred
-  setIntegerParam(pC_->motorStatusProblem_, 0);
-
-  callParamCallbacks();
+  pC_->getIntegerParam(axisNo_, pC_->motorStatusDone_, &iDone);
+  *moving = !iDone;
   return asynSuccess;
+}
+
+/** Prepare to polls the axis.
+ * This function generates commands to reads the axis status, motor and encoder position.
+ * These commands are appended to the list and send later. The function
+ * \ref "phytronAxis::parseAnswer" is called with the results.
+ * \param[in,out] asCommands array to append request commands
+ */
+void phytronAxis::appendRequestString(std::vector<std::string> &asCommands) const
+{
+  enum pollMethod iPollMethod(iPollMethod_);
+  if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
+  const char* pszAxis(&axisModuleNo_[0]);
+  if (iPollMethod == pollMethodSerial) {
+    // old default method, which uses 4 requests
+    asCommands.push_back(std::string("M") + pszAxis + "P20R");
+    asCommands.push_back(std::string("M") + pszAxis + "P22R");
+    asCommands.push_back(std::string("M") + pszAxis + "==H");
+    asCommands.push_back(std::string("SE") + pszAxis);
+  } else {
+    // new method: fix race condition and substitutes "==H" with result of "SE"-bit 0
+    asCommands.push_back(std::string("SE") + pszAxis);
+    asCommands.push_back(std::string("M") + pszAxis + "P20R");
+    asCommands.push_back(std::string("M") + pszAxis + "P22R");
+  }
+}
+
+/** Handle result of axis poll: parse answers and it calls setIntegerParam() and
+ * setDoubleParam() for each item that was polled and then calls callParamCallbacks()
+ * at the end.
+ * The commands are generated with help of \ref "phytronAxis::appendRequestString".
+ * \param[in,out] asValues array to remove requested answer
+ * \return true: successfully parsed and removed strings for this axis, false: error
+ */
+bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
+{
+  enum pollMethod iPollMethod(iPollMethod_);
+  if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
+  int iAxisStatus, iMotIdx, iEncIdx, iStatIdx, iIdleIdx, iHighLimit, iLowLimit;
+  size_t iRemoveCount;
+  bool bResult(false), bMoving;
+  double dRatio;
+  epicsInt32 iOldDone(0);
+  if (iPollMethod == pollMethodSerial) {
+    // old default method, which uses 4 single requests
+    iRemoveCount = 4;
+    if (asValues.size() != iRemoveCount) goto finish;
+    iMotIdx  = 0; // Mm.aP20R
+    iEncIdx  = 1; // Mm.aP22R
+    iIdleIdx = 2; // Mm.a==H
+    iStatIdx = 3; // SEm.a
+  } else {
+    // new method: fix race condition and substitutes "==H" with result of "SE"-bit 0
+    iRemoveCount = 3;
+    if (asValues.size() < iRemoveCount) goto finish;
+    iStatIdx = 0;  // SEm.a
+    iMotIdx  = 1;  // Mm.aP20R
+    iEncIdx  = 2;  // Mm.aP22R
+    iIdleIdx = -1; // not used
+  }
+  if (iPollMethod == pollMethodControllerParallel) {
+    for (size_t i = 0; i < iRemoveCount; ++i) {
+      if (asValues[i].substr(0, 1) != "\x06") // no ACK found here
+        goto finish;
+      asValues[i].erase(0, 1);
+    }
+  }
+
+  // current motor position
+  setDoubleParam(pC_->motorPosition_, atof(asValues[iMotIdx].c_str()));
+
+  /* Current encoder position: the encoder position returned by the controller
+   * is weighted by the controller resolution. To get the absolute encoder
+   * position, the received position must be multiplied by the encoder
+   * resolution. */
+  pC_->getDoubleParam(axisNo_, pC_->motorEncoderRatio_, &dRatio);
+  setDoubleParam(pC_->motorEncoderPosition_, atof(asValues[iEncIdx].c_str()) * dRatio);
+
+  // motor status
+  iAxisStatus = atoi(asValues[iStatIdx].c_str());
+
+  // idle/moving status
+  pC_->getIntegerParam(axisNo_, pC_->motorStatusDone_, &iOldDone);
+  if (iIdleIdx >= 0)
+    bMoving = (asValues[iIdleIdx].substr(0, 1) != "E");
+  else
+    bMoving = (iAxisStatus & 1) != 0;
+  setIntegerParam(pC_->motorStatusDone_, bMoving ? 0 : 1);
+  if (!iOldDone && !bMoving) // axis stopped
+    setBrakeOutput(NULL, 0);
+
+  iHighLimit = (iAxisStatus & 0x10) ? 1 : 0;
+  iLowLimit  = (iAxisStatus & 0x20) ? 1 : 0;
+  if (homeState_ >> 1) {
+    // workaround for home on limit switch
+    if (homeState_ & 1)
+      iHighLimit = 0;
+    else
+      iLowLimit = 0;
+    switch (homeState_ >> 1) {
+      case 1: // homing started, wait for moving
+        if (bMoving)
+          homeState_ += 2;
+        break;
+      case 2: // wait for move done
+      case 3: // tell record about limit reached
+      case 4:
+        if (!bMoving) {
+          homeState_ += 2;
+          if (homeState_ & 1)
+            iHighLimit = 1;
+          else
+            iLowLimit = 1;
+        }
+        if ((homeState_ >> 1) >= 4)
+          homeState_ = 0;
+        break;
+      default:
+        homeState_ = 0;
+        break;
+    }
+  }
+  setIntegerParam(pC_->motorStatusHighLimit_, iHighLimit);
+  setIntegerParam(pC_->motorStatusLowLimit_,  iLowLimit);
+  setIntegerParam(pC_->motorStatusAtHome_, (iAxisStatus & 0x40)/0x40);
+  setIntegerParam(pC_->motorStatusHomed_,  (iAxisStatus & 0x08)/0x08);
+  setIntegerParam(pC_->motorStatusHome_,   (iAxisStatus & 0x08)/0x08);
+  setIntegerParam(pC_->motorStatusSlip_,   (iAxisStatus & 0x4000)/0x4000);
+  setIntegerParam(pC_->axisStatus_, iAxisStatus); // Update the axis status record ($(P)$(M)_STATUS)
+  bResult = true;
+
+finish:
+  setIntegerParam(pC_->motorStatusProblem_, bResult ? 0 : 1);
+  callParamCallbacks();
+  asValues.erase(asValues.begin(), asValues.begin() + iRemoveCount);
+  return bResult;
 }
 
 /** Parameters for iocsh phytron axis registration*/
@@ -1122,18 +1529,35 @@ static const iocshArg phytronCreateControllerArg1 = {"PhytronAxis port name", io
 static const iocshArg phytronCreateControllerArg2 = {"Moving poll period (ms)", iocshArgInt};
 static const iocshArg phytronCreateControllerArg3 = {"Idle poll period (ms)", iocshArgInt};
 static const iocshArg phytronCreateControllerArg4 = {"Timeout (ms)", iocshArgDouble};
+static const iocshArg phytronCreateControllerArg5 = {"Do not restart controller with IOC", iocshArgInt};
 static const iocshArg * const phytronCreateControllerArgs[] = {&phytronCreateControllerArg0,
                                                              &phytronCreateControllerArg1,
                                                              &phytronCreateControllerArg2,
                                                              &phytronCreateControllerArg3,
-                                                             &phytronCreateControllerArg4};
+                                                             &phytronCreateControllerArg4,
+                                                             &phytronCreateControllerArg5};
+
+/** Parameters for iocsh phytron brake(s) output registration */
+static const iocshArg phytronBrakeOutputArg0 = {"Controller Name", iocshArgString};
+static const iocshArg phytronBrakeOutputArg1 = {"Axis index", iocshArgDouble};
+static const iocshArg phytronBrakeOutputArg2 = {"Output index", iocshArgDouble};
+static const iocshArg phytronBrakeOutputArg3 = {"Motor disable flag", iocshArgInt};
+static const iocshArg phytronBrakeOutputArg4 = {"Brake engage wait time (ms)", iocshArgDouble};
+static const iocshArg phytronBrakeOutputArg5 = {"Brake release wait time (ms)", iocshArgDouble};
+static const iocshArg* const phytronBrakeOutputArgs[] = {&phytronBrakeOutputArg0,
+                                                         &phytronBrakeOutputArg1,
+                                                         &phytronBrakeOutputArg2,
+                                                         &phytronBrakeOutputArg3,
+                                                         &phytronBrakeOutputArg4,
+                                                         &phytronBrakeOutputArg5};
 
 static const iocshFuncDef phytronCreateAxisDef = {"phytronCreateAxis", 3, phytronCreateAxisArgs};
-static const iocshFuncDef phytronCreateControllerDef = {"phytronCreateController", 5, phytronCreateControllerArgs};
+static const iocshFuncDef phytronCreateControllerDef = {"phytronCreateController", 6, phytronCreateControllerArgs};
+static const iocshFuncDef phytronBrakeOutputDef = {"phytronBrakeOutput", 6, phytronBrakeOutputArgs};
 
 static void phytronCreateControllerCallFunc(const iocshArgBuf *args)
 {
-  phytronCreateController(args[0].sval, args[1].sval, args[2].ival, args[3].ival, args[4].dval);
+  phytronCreateController(args[0].sval, args[1].sval, args[2].ival, args[3].ival, args[4].dval,args[5].ival);
 }
 
 static void phytronCreateAxisCallFunc(const iocshArgBuf *args)
@@ -1141,10 +1565,16 @@ static void phytronCreateAxisCallFunc(const iocshArgBuf *args)
   phytronCreateAxis(args[0].sval, args[1].ival, args[2].ival);
 }
 
+static void phytronBrakeOutputCallFunc(const iocshArgBuf *args)
+{
+  phytronBrakeOutput(args[0].sval, args[1].dval, args[2].dval, args[3].ival, args[4].dval, args[5].dval);
+}
+
 static void phytronRegister(void)
 {
   iocshRegister(&phytronCreateControllerDef, phytronCreateControllerCallFunc);
   iocshRegister(&phytronCreateAxisDef, phytronCreateAxisCallFunc);
+  iocshRegister(&phytronBrakeOutputDef, phytronBrakeOutputCallFunc);
 }
 
 extern "C" {

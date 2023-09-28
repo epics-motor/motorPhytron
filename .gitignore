@@ -1,19 +1,45 @@
+# Install directories
+/bin/
+/cfg/
+/db/
+/dbd/
+/html/
+/include/
+/lib/
+/templates/
+/iocs/*IOC/db/
+/iocs/*IOC/dbd/
+/iocs/*IOC/bin/
+/iocs/*IOC/lib/
+
+# Local configuration files
+/configure/*.local
+
+# iocBoot generated files
+/iocBoot/*ioc*/cdCommands
+/iocBoot/*ioc*/dllPath.bat
+/iocBoot/*ioc*/envPaths
+/iocBoot/*ioc*/relPaths.sh
+/iocs/*IOC*/iocBoot/*ioc*/cdCommands
+/iocs/*IOC*/iocBoot/*ioc*/dllPath.bat
+/iocs/*IOC*/iocBoot/*ioc*/envPaths
+/iocs/*IOC*/iocBoot/*ioc*/relPaths.sh
+
+# Build directories
+O.*/
+
+# Common files created by other tools
+/QtC-*
+/.vscode/
+/.qtc_*/
+/.ccfxprepdir/
+*.orig
+*.log
+.*.swp
+.DS_Store
+*.pro.user
 *~
-O.*
-*.swp
 *BAK.adl
-bin/
-db/
-dbd/
-html/
-include/
-lib/
-templates/
-cdCommands
-envPaths
-dllPath.bat
 auto_settings.sav*
 auto_positions.sav*
-.ccfxprepdir/
-*.local
 phytronMotors.*
