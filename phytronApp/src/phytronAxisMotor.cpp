@@ -162,15 +162,27 @@ phytronController::phytronController(const char *phytronPortName, const char *as
     controllers.push_back(this);
 
     if (noResetAtBoot != 1) {
+      epicsTimeStamp tStart, tNow;
       //RESET THE CONTROLLER
       if (sendPhytronCommand(std::string("CR")))
         asynPrint(this->pasynUserSelf, ASYN_TRACE_WARNING,
               "phytronController::phytronController: Could not reset controller %s\n", this->controllerName_);
 
       //Wait for reset to finish
-      epicsThreadSleep(10.0);
-    }  
-
+      epicsThreadSleep(5.0);
+      epicsTimeGetMonotonic(&tStart);
+      while (sendPhytronCommand(std::string("S")) != phytronSuccess)
+      {
+        epicsTimeGetMonotonic(&tNow);
+        if (epicsTimeDiffInSeconds(&tNow, &tStart) >= 120.)
+        {
+          asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
+                    "phytronController::phytronController: no valid answer after controller reset %s\n", this->controllerName_);
+          break;
+        }
+        epicsThreadSleep(0.5);
+      }
+    }
 
     startPoller(movingPollPeriod, idlePollPeriod, 5);
   }
