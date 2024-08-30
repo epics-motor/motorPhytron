@@ -1004,6 +1004,22 @@ void phytronAxis::report(FILE *fp, int level)
   asynMotorAxis::report(fp, level);
 }
 
+/**
+ * Clears axis errors before next try to move.
+ * \param[in,out] pCmdList  list of commands to append to or NULL (execute directly)
+ * \return communication status
+ */
+phytronStatus phytronAxis::clearAxisError(std::vector<std::string>* pCmdList)
+{
+  if (pCmdList)
+  {
+    pCmdList->push_back(std::string("SEC") + axisModuleNo_);
+    return phytronSuccess;
+  }
+  else
+    return pC_->sendPhytronCommand(std::string("SEC") + axisModuleNo_);
+}
+
 /** Sets velocity parameters before the move is executed. Controller produces a
  * trapezoidal speed profile defined by these parmeters.
  * \param[in,out] pCmdList      list of commands to append to or NULL (execute directly)
@@ -1183,6 +1199,9 @@ asynStatus phytronAxis::move(double position, int relative, double minVelocity, 
   enum pollMethod iPollMethod(iPollMethod_);
   if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
 
+  phyStatus = clearAxisError(&asCommands);
+  CHECK_AXIS("move", "Clearing motor errors", this, return pC_->phyToAsyn(phyStatus));
+
   //NOTE: Check if velocity is different, before setting it.
   phyStatus = setVelocity(&asCommands, minVelocity, maxVelocity, stdMove);
   CHECK_AXIS("move", "Setting the velocity", this, return pC_->phyToAsyn(phyStatus));
@@ -1222,6 +1241,9 @@ asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acce
   if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
 
   pC_->getIntegerParam(axisNo_, pC_->homingProcedure_, &homingType);
+
+  phyStatus = clearAxisError(&asCommands);
+  CHECK_AXIS("move", "Clearing motor errors", this, return pC_->phyToAsyn(phyStatus));
   if (homingType == limit)
     homeState_ = forwards ? 3 : 2;
 
@@ -1274,6 +1296,9 @@ asynStatus phytronAxis::moveVelocity(double minVelocity, double maxVelocity, dou
   phytronStatus phyStatus;
   enum pollMethod iPollMethod(iPollMethod_);
   if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
+
+  phyStatus = clearAxisError(&asCommands);
+  CHECK_AXIS("move", "Clearing motor errors", this, return pC_->phyToAsyn(phyStatus));
 
   phyStatus = setVelocity(&asCommands, minVelocity, maxVelocity, stdMove);
   CHECK_AXIS("moveVelocity", "Setting the velocity", this, );

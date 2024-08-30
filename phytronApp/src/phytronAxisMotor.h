@@ -126,6 +126,7 @@ private:
   phytronController *pC_;          /**< Pointer to the asynMotorController to which this axis belongs.
                                    *   Abbreviated because it is used very frequently */
 
+  phytronStatus clearAxisError(std::vector<std::string>* pCmdList);
   phytronStatus setVelocity(std::vector<std::string>* pCmdList, double minVelocity, double maxVelocity, int moveType);
   phytronStatus setAcceleration(std::vector<std::string>* pCmdList, double acceleration, int movementType);
   phytronStatus setBrakeOutput(std::vector<std::string>* pCmdList, bool bWantToMoveMotor);
