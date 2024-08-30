@@ -514,3 +514,26 @@ controller and ADDR=1... means a specific axis, which was created using
   axis and the fastest controller-parallel method takes 10ms for _all_ axes.
 - asynShowOption(PORT, ADDR, "pollMethod") shows the actual value as numeric
   value with text
+
+- asynSetOption(PORT, ADDR, "fakeHomedEnable", ...)
+  This option enables support for faked "homed" status of all axes. It uses
+  the Phytron controller registers 1001 to 1020, which are normally zeroed
+  after reset. The "homed" status is reset with any home command and will be
+  set, if the motor record sets a new position (e.g. AUTOSAVE). This is or-ed
+  together with the hardware "homed" status. The register 1001 will also be
+  used to detect restarted motor controllers.
+  Allowed values are "true" or "false" (default).
+- asynShowOption(PORT, ADDR, "fakeHomedEnable") shows the actual value.
+
+- asynShowOption(PORT, ADDR, "fakeHomedCache") shows the actual value of the
+  software faked HOMED bits for all axes as list of decimal values. This is
+  a debugging helper. The value index is (ADDR/10-1) and every bit corresponds
+  to ADDR modulo 10 of the axes. Bit0 of 1st value is always set for reset
+  detection.
+
+- asynSetOption(PORT, ADDR, "allowExitOnError", ...)
+  This option allows to exit the IOC in case of serious errors, e.g. a
+  restarted motor controller. Normally an IOC should be started via procServ,
+  which will restart it.
+  Allowed values are "true" or "false" (default).
+- asynShowOption(PORT, ADDR, "allowExitOnError") shows the actual value.

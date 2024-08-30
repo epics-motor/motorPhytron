@@ -208,6 +208,9 @@ private:
   phytronStatus lastStatus;
   bool do_initial_readout_;
   enum pollMethod iDefaultPollMethod_; ///< default poll method for every axis
+  bool fake_homed_enable_;             ///< enable fake HOMED bits with help Phytron registers 1001...1020 (max. 20 module positions)
+  epicsUInt16 fake_homed_cache_[20];   ///< cached value, which is updated with every poll (max. 20 module positions)
+  bool allow_exit_on_error_;           ///< allow exit(1) on error
 
   static void epicsInithookFunction(initHookState iState);
 

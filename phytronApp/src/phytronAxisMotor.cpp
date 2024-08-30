@@ -26,6 +26,9 @@ Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2024
 #include <epicsThread.h>
 #include <epicsStdlib.h>
 #include <epicsString.h>
+#include <epicsTime.h>
+#include <epicsMath.h>
+#include <epicsExit.h>
 #include <cantProceed.h>
 
 #include <asynOctetSyncIO.h>
@@ -69,6 +72,9 @@ using namespace std;
 //Specify maximum sleep time after brake was (de)activated in seconds
 #define MAXIMUM_BRAKE_TIME 10.0
 
+//static size of fixed array
+#define ARRAY_SIZE(x) ((int)(sizeof(x) / sizeof((x)[0])))
+
 /*
  * Contains phytronController instances, phytronCreateAxis uses it to find and
  * bind axis object to the correct controller object.
@@ -95,9 +101,14 @@ phytronController::phytronController(const char *phytronPortName, const char *as
   , lastStatus(phytronSuccess)
   , do_initial_readout_(true)
   , iDefaultPollMethod_(pollMethodSerial)
+  , fake_homed_enable_(false)
+  , allow_exit_on_error_(false)
 {
   asynStatus status;
   static const char *functionName = "phytronController::phytronController";
+
+  memset(fake_homed_cache_, 0, sizeof(fake_homed_cache_));
+  fake_homed_cache_[0] = 1;
 
   //Timeout is defined in milliseconds, but sendPhytronCommand expects seconds
   timeout_ = timeout/1000;
@@ -491,6 +502,26 @@ asynStatus phytronController::readOption(asynUser *pasynUser, const char *key, c
       snprintf(value, maxChars, "%d/%s", static_cast<int>(iMethod), szMethod);
       return asynSuccess;
     }
+    if (epicsStrCaseCmp(key, "fakeHomedEnable") == 0) {
+      snprintf(value, maxChars, "%s", fake_homed_enable_ ? "true" : "false");
+      return asynSuccess;
+    }
+    if (epicsStrCaseCmp(key, "fakeHomedCache") == 0) {
+      int iLen(0);
+      value[0] = '\0';
+      for (int i = 0; i < ARRAY_SIZE(fake_homed_cache_); ++i) {
+	snprintf(&value[iLen], maxChars - iLen, "%s%u", i ? "," : "", fake_homed_cache_[i]);
+	value[maxChars - 1] = '\0';
+	iLen += strlen(&value[iLen]);
+	if ((iLen + 1) >= maxChars)
+	  break;
+      }
+      return asynSuccess;
+    }
+    if (epicsStrCaseCmp(key, "allowExitOnError") == 0) {
+      snprintf(value, maxChars, "%s", allow_exit_on_error_ ? "true" : "false");
+      return asynSuccess;
+    }
   }
   return asynMotorController::readOption(pasynUser, key, value, maxChars);
 }
@@ -513,61 +544,99 @@ asynStatus phytronController::writeOption(asynUser *pasynUser, const char *key, 
 
   if (!key || !value)
     goto finish;
-  if (epicsStrCaseCmp(key, "pollMethod") != 0)
-    goto finish;
-
-  getAddress(pasynUser, &iAxisNo);
-  if (iAxisNo > 0) {
-    pAxis = getAxis(iAxisNo);
-    if (!pAxis) {
-      epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
-                    "phytronController:writeOption(%s, %s) wrong axis", key, value);
-      return asynError;
-    }
-    iMethod = pollMethodDefault;
-  }
-  if (epicsParseInt64(value, &iTmp, 0, NULL) == 0) {
-    if (iTmp < (pAxis ? static_cast<epicsInt64>(pollMethodDefault) : static_cast<epicsInt64>(pollMethodSerial)) ||
-        iTmp > static_cast<epicsInt64>(pollMethodControllerParallel))
-      goto wrongValue;
-    iMethod = static_cast<pollMethod>(iTmp);
-  } else {
-    while (isspace(*value)) ++value;
-    iLen = strlen(value);
-    while (iLen > 0 && isspace(value[iLen - 1])) --iLen;
-
-    if (pAxis && ((iLen ==  7 && !epicsStrnCaseCmp(value, "default", 7)) ||
-                  (iLen ==  8 && !epicsStrnCaseCmp(value, "standard", 8)) ||
-                  (iLen == 10 && !epicsStrnCaseCmp(value, "controller", 10))))
+  if (epicsStrCaseCmp(key, "pollMethod") == 0) {
+    // polling methods: serial, axis-parallel or controller-parallel; axis may have "default"
+    getAddress(pasynUser, &iAxisNo);
+    if (iAxisNo > 0) {
+      pAxis = getAxis(iAxisNo);
+      if (!pAxis) {
+        epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
+                      "phytronController:writeOption(%s, %s) wrong axis", key, value);
+        return asynError;
+      }
       iMethod = pollMethodDefault;
-    else if ((iLen ==  6 && !epicsStrnCaseCmp(value, "serial", 6)) ||
-             (iLen == 11 && !epicsStrnCaseCmp(value, "no-parallel", 11)) ||
-             (iLen == 12 && !epicsStrnCaseCmp(value, "not-parallel", 12)) ||
-             (iLen ==  3 && !epicsStrnCaseCmp(value, "old", 3)))
-      iMethod = pollMethodSerial;
-    else if ((iLen ==  4 && !epicsStrnCaseCmp(value, "axis", 4)) ||
-             (iLen == 13 && !epicsStrnCaseCmp(value, "axis-parallel", 13)))
-      iMethod = pollMethodAxisParallel;
-    else if ((iLen ==  4 && !epicsStrnCaseCmp(value, "ctrl", 4)) ||
-             (iLen ==  8 && !epicsStrnCaseCmp(value, "parallel", 8)) ||
-             (iLen == 13 && !epicsStrnCaseCmp(value, "ctrl-parallel", 13)) ||
-             (iLen == 19 && !epicsStrnCaseCmp(value, "controller-parallel", 19)))
-      iMethod = pollMethodControllerParallel;
-    else {
-wrongValue:
-      epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
-                    "phytronController:writeOption(%s, %s) wrong value", key, value);
-      return asynError;
     }
+    if (epicsParseInt64(value, &iTmp, 0, NULL) == 0) {
+      if (iTmp < (pAxis ? static_cast<epicsInt64>(pollMethodDefault) : static_cast<epicsInt64>(pollMethodSerial)) ||
+          iTmp > static_cast<epicsInt64>(pollMethodControllerParallel))
+        goto wrongValue;
+      iMethod = static_cast<pollMethod>(iTmp);
+    } else {
+      while (isspace(*value)) ++value;
+      iLen = strlen(value);
+      while (iLen > 0 && isspace(value[iLen - 1])) --iLen;
+
+      if (pAxis && ((iLen ==  7 && !epicsStrnCaseCmp(value, "default", 7)) ||
+                    (iLen ==  8 && !epicsStrnCaseCmp(value, "standard", 8)) ||
+                    (iLen == 10 && !epicsStrnCaseCmp(value, "controller", 10))))
+        iMethod = pollMethodDefault;
+      else if ((iLen ==  6 && !epicsStrnCaseCmp(value, "serial", 6)) ||
+               (iLen == 11 && !epicsStrnCaseCmp(value, "no-parallel", 11)) ||
+               (iLen == 12 && !epicsStrnCaseCmp(value, "not-parallel", 12)) ||
+               (iLen ==  3 && !epicsStrnCaseCmp(value, "old", 3)))
+        iMethod = pollMethodSerial;
+      else if ((iLen ==  4 && !epicsStrnCaseCmp(value, "axis", 4)) ||
+               (iLen == 13 && !epicsStrnCaseCmp(value, "axis-parallel", 13)))
+        iMethod = pollMethodAxisParallel;
+      else if ((iLen ==  4 && !epicsStrnCaseCmp(value, "ctrl", 4)) ||
+               (iLen ==  8 && !epicsStrnCaseCmp(value, "parallel", 8)) ||
+               (iLen == 13 && !epicsStrnCaseCmp(value, "ctrl-parallel", 13)) ||
+               (iLen == 19 && !epicsStrnCaseCmp(value, "controller-parallel", 19)))
+        iMethod = pollMethodControllerParallel;
+      else
+        goto wrongValue;
+    }
+    if (pAxis)
+      pAxis->iPollMethod_ = iMethod;
+    else
+      iDefaultPollMethod_ = iMethod;
+    return asynSuccess;
   }
-  if (pAxis)
-    pAxis->iPollMethod_ = iMethod;
-  else
-    iDefaultPollMethod_ = iMethod;
-  return asynSuccess;
+
+  if (epicsStrCaseCmp(key, "fakeHomedEnable") == 0) {
+    if (epicsParseInt64(value, &iTmp, 0, NULL) == 0)
+      fake_homed_enable_ = (iTmp != 0);
+    else if (epicsStrCaseCmp(value, "t") == 0 || epicsStrCaseCmp(value, "true") == 0 ||
+             epicsStrCaseCmp(value, "y") == 0 || epicsStrCaseCmp(value, "yes") == 0 ||
+             epicsStrCaseCmp(value, "on") == 0)
+    {
+      if (sendPhytronCommand(std::string("R1001=") + std::to_string(fake_homed_cache_[0])) != phytronSuccess)
+	return asynError;
+      fake_homed_enable_ = true;
+    }
+    else if (epicsStrCaseCmp(value, "f") == 0 || epicsStrCaseCmp(value, "false") == 0 ||
+             epicsStrCaseCmp(value, "n") == 0 || epicsStrCaseCmp(value, "no") == 0 ||
+             epicsStrCaseCmp(value, "off") == 0)
+      fake_homed_enable_ = false;
+    else
+      goto wrongValue;
+    return asynSuccess;
+  }
+
+  if (epicsStrCaseCmp(key, "allowExitOnError") == 0) {
+    if (epicsParseInt64(value, &iTmp, 0, NULL) == 0)
+      allow_exit_on_error_ = (iTmp != 0);
+    else if (epicsStrCaseCmp(value, "t") == 0 || epicsStrCaseCmp(value, "true") == 0 ||
+             epicsStrCaseCmp(value, "y") == 0 || epicsStrCaseCmp(value, "yes") == 0 ||
+             epicsStrCaseCmp(value, "on") == 0)
+      allow_exit_on_error_ = true;
+    else if (epicsStrCaseCmp(value, "f") == 0 || epicsStrCaseCmp(value, "false") == 0 ||
+             epicsStrCaseCmp(value, "n") == 0 || epicsStrCaseCmp(value, "no") == 0 ||
+             epicsStrCaseCmp(value, "off") == 0)
+      allow_exit_on_error_ = false;
+    else
+      goto wrongValue;
+    return asynSuccess;
+  }
 
 finish:
   return asynMotorController::writeOption(pasynUser, key, value);
+
+wrongValue:
+  epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
+                "phytronController:writeOption(%s, %s) wrong value - allowed are %sserial,axis-parallel,%sparallel",
+                key, value, pAxis ? "default," : "", pAxis ? "controller-" : "");
+  return asynError;
 }
 
 /*
@@ -641,6 +710,9 @@ asynStatus phytronController::poll()
   if (iResult == asynSuccess) {
     // check, which axes should be handled here
     std::vector<phytronAxis*> apTodoAxis;
+    std::vector<std::string> asCommands, asResponses;
+    if (fake_homed_enable_ > 0)
+      asCommands.push_back(std::string("R1001R"));
     for (std::vector<phytronAxis*>::iterator it = axes.begin(); it != axes.end(); ++it) {
       phytronAxis* pAxis(*it);
       if (!pAxis) continue;
@@ -648,26 +720,54 @@ asynStatus phytronController::poll()
       if (iPollMethod < 0) iPollMethod = iDefaultPollMethod_;
       // this axis is configured for controller parallel poll and handled here
       if (iPollMethod == pollMethodControllerParallel)
+      {
         apTodoAxis.emplace_back(std::move(pAxis));
+        pAxis->appendRequestString(asCommands); // collect requests
+      }
     }
-    if (!apTodoAxis.empty()) {
-      std::vector<std::string> asRequests, asAnswers;
-      asRequests.reserve(3 * apTodoAxis.size());
-      // collect requests
-      for (std::vector<phytronAxis*>::iterator it = apTodoAxis.begin(); it != apTodoAxis.end(); ++it)
-        (*it)->appendRequestString(asRequests);
+    if (!asCommands.empty())
+    {
       // communicate
-      iResult = phyToAsyn(sendPhytronMultiCommand(asRequests, asAnswers, true));
+      iResult = phyToAsyn(sendPhytronMultiCommand(asCommands, asResponses, true));
       if (iResult == asynSuccess) {
         // handle answers
-        for (std::vector<phytronAxis*>::iterator it = apTodoAxis.begin(); it != apTodoAxis.end(); ++it)
-          if (!(*it)->parseAnswer(asAnswers))
+        while (fake_homed_enable_)
+        {
+          double dTmp(static_cast<double>(epicsNAN));
+	  const char* szValue;
+          if (asCommands.empty())
+          {
             iResult = asynError;
-        if (!asAnswers.empty())
+            break;
+          }
+	  szValue = asResponses.front().c_str();
+	  if (*szValue++ != '\x06') // need ACK here
+	    iResult = asynError;
+          if (epicsParseDouble(szValue, &dTmp, NULL) != 0)
+            iResult = asynError;
+          else if (!isfinite(dTmp) || floor(dTmp + 0.5) < 0. || floor(dTmp + 0.5) >= 65536.)
+            iResult = asynError;
+          else if (static_cast<epicsUInt64>(floor(dTmp + 0.5)) != fake_homed_cache_[0])
+          {
+            // detected a difference in cached value, the Phytron was restarted
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR, "detected a difference in cached fake-homed-bit value, did the Phytron a restart?\n");
+            if (allow_exit_on_error_)
+              epicsExit(1);
+          }
+          asResponses.erase(asResponses.begin());
+          break;
+        }
+        if (!apTodoAxis.empty())
+          for (std::vector<phytronAxis*>::iterator it = apTodoAxis.begin(); it != apTodoAxis.end(); ++it)
+            if (!(*it)->parseAnswer(asResponses))
+              iResult = asynError;
+        if (!asResponses.empty())
           iResult = asynError;
       }
     }
   }
+  if (iResult != asynSuccess)
+    asynPrint(pasynUserSelf, ASYN_TRACE_ERROR, "phytronController::poll(%s) error %d\n", controllerName_, iResult);
   return iResult;
 }
 
@@ -1029,10 +1129,10 @@ phytronStatus phytronAxis::clearAxisError(std::vector<std::string>* pCmdList)
  */
 phytronStatus phytronAxis::setVelocity(std::vector<std::string>* pCmdList, double minVelocity, double maxVelocity, int moveType)
 {
-  std::vector<std::string> asRequests;
+  std::vector<std::string> asCommands;
   enum pollMethod iPollMethod(iPollMethod_);
   if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
-  if (!pCmdList) pCmdList = &asRequests;
+  if (!pCmdList) pCmdList = &asCommands;
 
   maxVelocity = fabs(maxVelocity);
   minVelocity = fabs(minVelocity);
@@ -1073,8 +1173,8 @@ phytronStatus phytronAxis::setVelocity(std::vector<std::string>* pCmdList, doubl
     default:
       return phytronSuccess;
   }
-  if (pCmdList != &asRequests) return phytronSuccess;
-  return pC_->sendPhytronMultiCommand(asRequests, asRequests, false, iPollMethod == pollMethodSerial);
+  if (pCmdList != &asCommands) return phytronSuccess;
+  return pC_->sendPhytronMultiCommand(asCommands, asCommands, false, iPollMethod == pollMethodSerial);
 }
 
 /** Sets acceleration parameters before the move is executed.
@@ -1133,10 +1233,10 @@ asynStatus phytronAxis::configureBrake(float fOutput, bool bDisableMotor, double
  */
 phytronStatus phytronAxis::setBrakeOutput(std::vector<std::string>* pCmdList, bool bWantToMoveMotor)
 {
-  std::vector<std::string> asRequests;
+  std::vector<std::string> asCommands;
   //printf("setting brake output for axis %s: wantmove=%d output=%.15g disable=%d engagetime=%.15g releasetime=%.15g released=%d\n",
   //       axisModuleNo_, bWantToMoveMotor, brakeOutput_, disableMotor_, brakeEngageTime_, brakeReleaseTime_, brakeReleased_);
-  if (!pCmdList) pCmdList = &asRequests;
+  if (!pCmdList) pCmdList = &asCommands;
   brakeReleased_ = bWantToMoveMotor;
   if (bWantToMoveMotor) {
     // activate motor output
@@ -1150,8 +1250,8 @@ phytronStatus phytronAxis::setBrakeOutput(std::vector<std::string>* pCmdList, bo
       pCmdList->push_back(const_cast<const char*>(pC_->outString_));
     }
 
-    if (pCmdList == &asRequests || brakeReleaseTime_ > 0.0) {
-      pC_->sendPhytronMultiCommand(*pCmdList, asRequests, false, false);
+    if (pCmdList == &asCommands || brakeReleaseTime_ > 0.0) {
+      pC_->sendPhytronMultiCommand(*pCmdList, asCommands, false, false);
       pCmdList->clear();
     }
 
@@ -1164,8 +1264,8 @@ phytronStatus phytronAxis::setBrakeOutput(std::vector<std::string>* pCmdList, bo
     // engage brake
     sprintf(pC_->outString_, "A%.1f%c", fabs(brakeOutput_), brakeOutput_ > 0.0 ? 'R' : 'S');
     pCmdList->push_back(const_cast<const char*>(pC_->outString_));
-    if (pCmdList == &asRequests || brakeEngageTime_ > 0.0) {
-      pC_->sendPhytronMultiCommand(*pCmdList, asRequests, false, false);
+    if (pCmdList == &asCommands || brakeEngageTime_ > 0.0) {
+      pC_->sendPhytronMultiCommand(*pCmdList, asCommands, false, false);
       pCmdList->clear();
     }
 
@@ -1177,8 +1277,8 @@ phytronStatus phytronAxis::setBrakeOutput(std::vector<std::string>* pCmdList, bo
     sprintf(pC_->outString_, "M%sMD", axisModuleNo_);
     pCmdList->push_back(const_cast<const char*>(pC_->outString_));
     disableMotor_ &= ~2;
-    if (pCmdList == &asRequests) {
-      pC_->sendPhytronMultiCommand(*pCmdList, asRequests, false, false);
+    if (pCmdList == &asCommands) {
+      pC_->sendPhytronMultiCommand(*pCmdList, asCommands, false, false);
       pCmdList->clear();
     }
   }
@@ -1244,8 +1344,6 @@ asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acce
 
   phyStatus = clearAxisError(&asCommands);
   CHECK_AXIS("move", "Clearing motor errors", this, return pC_->phyToAsyn(phyStatus));
-  if (homingType == limit)
-    homeState_ = forwards ? 3 : 2;
 
   phyStatus =  setVelocity(&asCommands, minVelocity, maxVelocity, homeMove);
   CHECK_AXIS("home", "Setting the velocity", this, return pC_->phyToAsyn(phyStatus));
@@ -1256,6 +1354,19 @@ asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acce
   setBrakeOutput(&asCommands, 1);
   CHECK_AXIS("home", "Setting the brake", this, return pC_->phyToAsyn(phyStatus));
 
+  if (axisNo_>= 10 && (axisNo_ / 10) <= ARRAY_SIZE(pC_->fake_homed_cache_))
+  {
+    int iIndex((axisNo_ / 10) - 1);
+    if ((pC_->fake_homed_cache_[iIndex] >> (axisNo_ % 10)) & 1)
+    {
+      pC_->fake_homed_cache_[iIndex] &= ~(1 << (axisNo_ % 10));
+      if (pC_->fake_homed_enable_)
+        asCommands.push_back(std::string("R") + std::to_string(1001 + iIndex) + "=" + std::to_string(pC_->fake_homed_cache_[iIndex]));
+    }
+  }
+
+  if (homingType == limit)
+    homeState_ = forwards ? 3 : 2;
   if(forwards){
     if(homingType == limit) sprintf(pC_->outString_, "M%sR+", axisModuleNo_);
     else if(homingType == center) sprintf(pC_->outString_, "M%sR+C", axisModuleNo_);
@@ -1368,9 +1479,20 @@ asynStatus phytronAxis::setEncoderPosition(double position)
 asynStatus phytronAxis::setPosition(double position)
 {
   phytronStatus phyStatus;
+  std::vector<std::string> asCommands;
 
-  sprintf(pC_->outString_, "M%sP20=%f", axisModuleNo_, position);
-  phyStatus = pC_->sendPhytronCommand(const_cast<const char*>(pC_->outString_));
+  asCommands.push_back(std::string("M") + axisModuleNo_ + "P20=" + std::to_string(position));
+  if (axisNo_>= 10 && (axisNo_ / 10) <= ARRAY_SIZE(pC_->fake_homed_cache_))
+  {
+    int iIndex((axisNo_ / 10) - 1);
+    if (!((pC_->fake_homed_cache_[iIndex] >> (axisNo_ % 10)) & 1))
+    {
+      pC_->fake_homed_cache_[iIndex] |= 1 << (axisNo_ % 10);
+      if (pC_->fake_homed_enable_)
+        asCommands.push_back(std::string("R") + std::to_string(1001 + iIndex) + "=" + std::to_string(pC_->fake_homed_cache_[iIndex]));
+    }
+  }
+  phyStatus = pC_->sendPhytronMultiCommand(asCommands, asCommands, false, iPollMethod_ == pollMethodSerial);
   CHECK_AXIS("setPosition", "Setting motor position", this, return pC_->phyToAsyn(phyStatus));
 
   return asynSuccess;
@@ -1399,17 +1521,17 @@ asynStatus phytronAxis::poll(bool *moving)
 {
   int iDone(0);
   enum pollMethod iPollMethod(iPollMethod_);
-  std::vector<std::string> asRequests, asAnswers;
+  std::vector<std::string> asCommands, asResponses;
   phytronStatus phyStatus(phytronSuccess);
   if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
   switch (iPollMethod) {
     case pollMethodSerial:
     case pollMethodAxisParallel:
-      appendRequestString(asRequests); // get commands
+      appendRequestString(asCommands); // get commands
       // communicate
-      phyStatus = pC_->sendPhytronMultiCommand(asRequests, asAnswers, false, iPollMethod == pollMethodSerial);
+      phyStatus = pC_->sendPhytronMultiCommand(asCommands, asResponses, false, iPollMethod == pollMethodSerial);
       if (phyStatus == phytronSuccess) // on success: parse answers
-	if (!parseAnswer(asAnswers) || !asAnswers.empty())
+	if (!parseAnswer(asResponses) || !asResponses.empty())
 	  phyStatus = phytronInvalidReturn;
       CHECK_AXIS("poll", "Reading axis", this, setIntegerParam(pC_->motorStatusProblem_, 1); \
         callParamCallbacks(); pC_->phyToAsyn(phyStatus));
@@ -1513,12 +1635,15 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
 
   iHighLimit = (iAxisStatus & 0x10) ? 1 : 0;
   iLowLimit  = (iAxisStatus & 0x20) ? 1 : 0;
+  bResult = !(iAxisStatus & 0xF800); // axis internal/limit-switch/power-stage/SFI/ENDAT error
   if (homeState_ >> 1) {
-    // workaround for home on limit switch
+      // workaround for home on limit switch
+    int iHomingType(-1);
     if (homeState_ & 1)
       iHighLimit = 0;
     else
       iLowLimit = 0;
+    pC_->getIntegerParam(axisNo_, pC_->homingProcedure_, &iHomingType);
     switch (homeState_ >> 1) {
       case 1: // homing started, wait for moving
         if (bMoving)
@@ -1535,7 +1660,15 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
             iLowLimit = 1;
         }
         if ((homeState_ >> 1) >= 4)
+	{
+	  // end-of-reference: in case of triggered limit switches, Phytron
+	  // sets "limit switch error", which should be cleared, if no
+	  // other problem was detected [manual SEm.n]
+	  int iMask((homeState_ & 1) ? 0xFA29 : 0xFA19);
+	  if ((iAxisStatus & iMask) == 0x1208)
+	    pC_->sendPhytronCommand(std::string("SEC") + axisModuleNo_);
           homeState_ = 0;
+	}
         break;
       default:
         homeState_ = 0;
@@ -1545,11 +1678,16 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
   setIntegerParam(pC_->motorStatusHighLimit_, iHighLimit);
   setIntegerParam(pC_->motorStatusLowLimit_,  iLowLimit);
   setIntegerParam(pC_->motorStatusAtHome_, (iAxisStatus & 0x40)/0x40);
-  setIntegerParam(pC_->motorStatusHomed_,  (iAxisStatus & 0x08)/0x08);
+  setIntegerParam(pC_->motorStatusHomed_, 0);
+  if (pC_->fake_homed_enable_ && axisNo_ >= 10 &&
+      (axisNo_ / 10) <= ARRAY_SIZE(pC_->fake_homed_cache_) &&
+      ((pC_->fake_homed_cache_[(axisNo_ / 10) - 1] >> (axisNo_ % 10)) & 1))
+    setIntegerParam(pC_->motorStatusHomed_, 1); // after setPosition: set HOMED bit
+  else
+    setIntegerParam(pC_->motorStatusHomed_, (iAxisStatus & 0x08)/0x08);
   setIntegerParam(pC_->motorStatusHome_,   (iAxisStatus & 0x08)/0x08);
   setIntegerParam(pC_->motorStatusSlip_,   (iAxisStatus & 0x4000)/0x4000);
   setIntegerParam(pC_->axisStatus_, iAxisStatus); // Update the axis status record ($(P)$(M)_STATUS)
-  bResult = true;
 
 finish:
   setIntegerParam(pC_->motorStatusProblem_, bResult ? 0 : 1);
