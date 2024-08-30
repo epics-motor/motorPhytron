@@ -1,13 +1,14 @@
 ********************************************************************************
-Phytron I1AM01 Stepper Motor Controller Asyn Driver Documentation
+Phytron I1AM01, I1AM02, I1EM01, I1EM02 Stepper Motor Controller
+Asyn Driver Documentation
 
 Authors: Tom Slejko, Bor Marolt, Cosylab d.d.
 		tom.slejko@cosylab.com
 		bor.marolt@cosylab.com
 	 Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH
-   Will Smith, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH
-		rossa@helmholtz-berlin.de
-    william.smith@helmholtz-berlin.de
+		<rossa@helmholtz-berlin.de>
+	 Will Smith, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH
+		<william.smith@helmholtz-berlin.de>
 
 ********************************************************************************
 Table of contents:
@@ -15,17 +16,18 @@ Table of contents:
     - Example Application
     - New Applicaion
 - Database
-    - Supported I1AM01 Features
+    - Supported I1AM01, I1AM02, I1EM01, I1EM02 Features
          - Initialization records
          - Status
          - Homing
          - Reset
-         - I1AM01 parameters
+         - I1AM01, I1AM02, I1EM01, I1EM02 parameters
     - Supported MCM01 Features
     - Motor record
-    - List of remaining I1AM01 parameters handled by the motor record, 
-      internally by controller, or not applicable
+    - List of remaining I1AM01, I1AM02, I1EM01, I1EM02 parameters handled by
+      the motor record, internally by controller, or not applicable
 - GUI
+- Asyn option interface
 
 
 Controller and axis configuration
@@ -71,8 +73,9 @@ Phytron_I1AM01.db, Phytron_MCM01.db and Phytron_motor.db) must be used.
 Start up script must perform the following:
 Before configuring the controller the user must create an asyn port by running 
 drvAsynIPPortConfigure or drvAsynSerialPortConfigure in order to create a 
-communication interface to Phytron's MCM Unit which controlls the I1AM01 
-modules.
+communication interface to Phytron's MCM Unit which controlls the I1AM01,
+I1AM02, I1EM01 and I1EM02 modules. Below any type of I1AM01 means also the
+other types I1AM02, I1EM01, I1EM02.
 
 If serial port is used for communication with the controller, baud rate, number
 of data bits, parity, number of stop bits and End Of Line character must be set,
@@ -109,7 +112,7 @@ Once the phytron controller is configured, user can initialize axes by running
 phytronCreateAxis(const char* phytronPortName, int module, int axis)
 - phytronPortName: Previously defined name of the MCM unit
 - module: index of the I1AM01 module connected to the MCM
-- axis: index of the axis on the I1AM01 module
+- axis: index of the axis on the I1AM01 module (starting with 1)
 
 Module index and axis index compose the axis asyn ADDR (ADDR macro) used in the
 motor.substitutions file. 
@@ -484,7 +487,30 @@ Contains an LED for each of the 16 bi records parsing the $(P)-STATUS-BITS_
 mbbiDirect record
 
 
+Asyn option interface:
+======================
+This support want to be backward compatible to older versions as much as
+possible. It supports setting additional options via the asyn option interface
+with iocsh commands "asynSetOption" or "asynShowOption". ADDR=0 means the
+controller and ADDR=1... means a specific axis, which was created using
+"phytronCreateAxis" above:
 
-
-
-
+- asynSetOption(PORT, ADDR, "pollMethod", ...)
+  This option allows to speed up communication with controllers. Is is possible
+  to set up different methods for different axes and the controller (ADDR=0).
+  These methods are available:
+  * "serial" or "no-parallel" or "not-parallel" or "old": this is the default
+    method. It is compatible but slow and does a handshake (request + reply)
+    for every command,
+  * "axis" or "axis-parallel": this does some parallel command execution (one
+    handshake for every axis) and is supported on many controllers,
+  * "parallel" or "controller-parallel": this tries to do one handshake for all
+    axes at a time. This is the fastest communication and supported on many
+    controllers,
+  * "default" or "standard": this is for a single axis only and uses the
+    setting for the controller.
+  Every handshake to a TCP-connected controller takes around 10ms, so the
+  serial method takes 40ms per axis, the axis-parallel method takes 10ms per
+  axis and the fastest controller-parallel method takes 10ms for _all_ axes.
+- asynShowOption(PORT, ADDR, "pollMethod") shows the actual value as numeric
+  value with text

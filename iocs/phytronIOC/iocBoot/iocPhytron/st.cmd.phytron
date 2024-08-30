@@ -8,9 +8,17 @@ phytron_registerRecordDeviceDriver(pdbbase)
 
 #drvAsynIPPortConfigure("testPort","localhost:8000",0,0,1)
 drvAsynIPPortConfigure("testRemote","10.5.1.181:22222",0,0,1)
+#drvAsynSerialPortConfigure("testRemote","/dev/ttyUSB0",0,0,1)
+#asynSetOption("testRemote", -1, "baud", "115200")
+#asynSetOption("testRemote", -1, "bits", "8")
+#asynSetOption("testRemote", -1, "parity", "none")
+#asynSetOption("testRemote", -1, "stop", "1")
+#asynSetOption("testRemote", -1, "clocal", "N")
+#asynSetOption("testRemote", -1, "crtscts", "N")
 
 #phytronCreateController (phytronPort, asynPort, movingPollPeriod, idlePollPeriod, timeout)
 phytronCreateController ("phyMotionPort", "testRemote", 100, 100, 1000)
+#asynSetOption("phyMotionPort", 0, "pollMethod", "parallel")
 
 #phytronCreateAxis(phytronPort, module, axis)
 phytronCreateAxis("phyMotionPort", 1, 1)
@@ -18,4 +26,22 @@ phytronCreateAxis("phyMotionPort", 2, 1)
 
 dbLoadTemplate "motor.substitutions.phytron"
 
+## configure AUTOSAVE
+#epicsEnvSet("SAVE_DIR","$(TOP)/iocBoot/$(IOC)")
+#epicsEnvSet("IOCNAME","$(IOC)-autosave")
+#dbLoadRecords("$(AUTOSAVE)/asApp/Db/save_restoreStatus.db", "P=$(IOCNAME):")
+#save_restoreSet_status_prefix("$(IOCNAME):")
+#set_requestfile_path("$(SAVE_DIR)")
+#set_savefile_path("$(SAVE_DIR)")
+## Schedule a maximum of 3 sequenced backups of the .sav file
+## every 10 minutes - .sav0, .sav1, .sav2
+#save_restoreSet_NumSeqFiles(3)
+#save_restoreSet_SeqPeriodInSeconds(600)
+#set_pass0_restoreFile("$(IOCNAME).sav")
+#set_pass1_restoreFile("$(IOCNAME).sav")
+
 iocInit()
+
+## Create request file and start periodic 'save’
+#makeAutosaveFileFromDbInfo("$(SAVE_DIR)/$(IOCNAME).req", "autosaveFields")
+#create_monitor_set("$(IOCNAME).req", 5)

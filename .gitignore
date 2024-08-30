@@ -24,6 +24,7 @@
 /iocs/*IOC*/iocBoot/*ioc*/dllPath.bat
 /iocs/*IOC*/iocBoot/*ioc*/envPaths
 /iocs/*IOC*/iocBoot/*ioc*/relPaths.sh
+/iocs/*IOC*/iocBoot/*ioc*/.iocsh_history
 
 # Build directories
 O.*/

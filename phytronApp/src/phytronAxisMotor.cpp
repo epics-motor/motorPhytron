@@ -5,7 +5,7 @@ USAGE...    Motor driver support for Phytron Axis controller.
 Tom Slejko & Bor Marolt
 Cosylab d.d. 2014
 
-Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2023
+Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2024
 
 */
 
@@ -92,6 +92,7 @@ phytronController::phytronController(const char *phytronPortName, const char *as
                          ASYN_CANBLOCK | ASYN_MULTIDEVICE,
                          1, // autoconnect
                          0, 0)// Default priority and stack size
+  , lastStatus(phytronSuccess)
   , do_initial_readout_(true)
   , iDefaultPollMethod_(pollMethodSerial)
 {
@@ -113,34 +114,34 @@ phytronController::phytronController(const char *phytronPortName, const char *as
   createParam(resetControllerString,      asynParamInt32, &this->resetController_);
 
   //Create Axis parameters
-  createParam(axisStatusResetString,      asynParamInt32, &this->axisStatusReset_);
-  createParam(axisResetString,            asynParamInt32, &this->axisReset_);
-  createParam(axisStatusString,           asynParamInt32, &this->axisStatus_);
-  createParam(homingProcedureString,      asynParamInt32, &this->homingProcedure_);
-  createParam(axisModeString,             asynParamInt32, &this->axisMode_);
-  createParam(mopOffsetPosString,         asynParamInt32, &this->mopOffsetPos_);
-  createParam(mopOffsetNegString,         asynParamInt32, &this->mopOffsetNeg_);
-  createParam(stepResolutionString,       asynParamInt32, &this->stepResolution_);
-  createParam(stopCurrentString,          asynParamInt32, &this->stopCurrent_);
-  createParam(runCurrentString,           asynParamInt32, &this->runCurrent_);
-  createParam(boostCurrentString,         asynParamInt32, &this->boostCurrent_);
-  createParam(encoderTypeString,          asynParamInt32, &this->encoderType_);
-  createParam(initRecoveryTimeString,     asynParamInt32, &this->initRecoveryTime_);
-  createParam(positionRecoveryTimeString, asynParamInt32, &this->positionRecoveryTime_);
-  createParam(boostConditionString,       asynParamInt32, &this->boost_);
-  createParam(encoderRateString,          asynParamInt32, &this->encoderRate_);
-  createParam(switchTypString,            asynParamInt32, &this->switchTyp_);
-  createParam(pwrStageModeString,         asynParamInt32, &this->pwrStageMode_);
-  createParam(encoderResolutionString,    asynParamInt32, &this->encoderRes_);
-  createParam(encoderFunctionString,      asynParamInt32, &this->encoderFunc_);
-  createParam(encoderSFIWidthString,      asynParamInt32, &this->encoderSFIWidth_);
-  createParam(encoderDirectionString,     asynParamInt32, &this->encoderDirection_);
-  createParam(powerStagetMonitorString,   asynParamInt32, &this->powerStageMonitor_);
-  createParam(currentDelayTimeString,     asynParamInt32, &this->currentDelayTime_);
+  createParam(axisStatusResetString,      asynParamInt32,   &this->axisStatusReset_);
+  createParam(axisResetString,            asynParamInt32,   &this->axisReset_);
+  createParam(axisStatusString,           asynParamInt32,   &this->axisStatus_);
+  createParam(homingProcedureString,      asynParamInt32,   &this->homingProcedure_);
+  createParam(axisModeString,             asynParamInt32,   &this->axisMode_);
+  createParam(mopOffsetPosString,         asynParamInt32,   &this->mopOffsetPos_);
+  createParam(mopOffsetNegString,         asynParamInt32,   &this->mopOffsetNeg_);
+  createParam(stepResolutionString,       asynParamInt32,   &this->stepResolution_);
+  createParam(stopCurrentString,          asynParamInt32,   &this->stopCurrent_);
+  createParam(runCurrentString,           asynParamInt32,   &this->runCurrent_);
+  createParam(boostCurrentString,         asynParamInt32,   &this->boostCurrent_);
+  createParam(encoderTypeString,          asynParamInt32,   &this->encoderType_);
+  createParam(initRecoveryTimeString,     asynParamInt32,   &this->initRecoveryTime_);
+  createParam(positionRecoveryTimeString, asynParamInt32,   &this->positionRecoveryTime_);
+  createParam(boostConditionString,       asynParamInt32,   &this->boost_);
+  createParam(encoderRateString,          asynParamInt32,   &this->encoderRate_);
+  createParam(switchTypString,            asynParamInt32,   &this->switchTyp_);
+  createParam(pwrStageModeString,         asynParamInt32,   &this->pwrStageMode_);
+  createParam(encoderResolutionString,    asynParamInt32,   &this->encoderRes_);
+  createParam(encoderFunctionString,      asynParamInt32,   &this->encoderFunc_);
+  createParam(encoderSFIWidthString,      asynParamInt32,   &this->encoderSFIWidth_);
+  createParam(encoderDirectionString,     asynParamInt32,   &this->encoderDirection_);
+  createParam(powerStagetMonitorString,   asynParamInt32,   &this->powerStageMonitor_);
+  createParam(currentDelayTimeString,     asynParamInt32,   &this->currentDelayTime_);
   createParam(powerStageTempString,       asynParamFloat64, &this->powerStageTemp_);
   createParam(motorTempString,            asynParamFloat64, &this->motorTemp_);
   createParam(axisBrakeOutputString,      asynParamFloat64, &this->axisBrakeOutput_);
-  createParam(axisDisableMotorString,     asynParamInt32, &this->axisDisableMotor_);
+  createParam(axisDisableMotorString,     asynParamInt32,   &this->axisDisableMotor_);
   createParam(axisBrakeEngageTimeString,  asynParamFloat64, &this->axisBrakeEngageTime_);
   createParam(axisBrakeReleaseTimeString, asynParamFloat64, &this->axisBrakeReleaseTime_);
 
@@ -160,7 +161,7 @@ phytronController::phytronController(const char *phytronPortName, const char *as
     //phytronCreateAxis will search for the controller for axis registration
     controllers.push_back(this);
 
-    if (noResetAtBoot != 1){
+    if (noResetAtBoot != 1) {
       //RESET THE CONTROLLER
       if (sendPhytronCommand(std::string("CR")))
         asynPrint(this->pasynUserSelf, ASYN_TRACE_WARNING,
@@ -362,7 +363,7 @@ asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
   } else if(pasynUser->reason == encoderDirection_){
     sprintf(this->outString_, "M%sP38=%d", pAxis->axisModuleNo_, value);
   } else if(pasynUser->reason == axisDisableMotor_){
-    pAxis->disableMotor_ = (pAxis->disableMotor_ & (~1)) | (value != 0) ? 1 : 0;
+    pAxis->disableMotor_ = (pAxis->disableMotor_ & (~1)) | ((value != 0) ? 1 : 0);
     pAxis->setBrakeOutput(NULL, pAxis->brakeReleased_);
     return asynSuccess;
   }
@@ -888,9 +889,14 @@ asynStatus phytronController::phyToAsyn(phytronStatus phyStatus)
 extern "C" int phytronCreateAxis(const char* controllerName, int module, int axis)
 {
   phytronAxis *pAxis;
+  uint32_t i;
+
+  if (axis <= 0) {
+    printf("ERROR: invalid axis specified\n");
+    return asynError;
+  }
 
   //Find the controller
-  uint32_t i;
   for(i = 0; i < controllers.size(); i++){
     if(!strcmp(controllers[i]->controllerName_, controllerName)) {
       pAxis = new phytronAxis(controllers[i], module*10 + axis);
@@ -979,10 +985,8 @@ phytronAxis::phytronAxis(phytronController *pC, int axisNo)
   */
 void phytronAxis::report(FILE *fp, int level)
 {
-  if (level > 0) {
-    fprintf(fp, "  axis %d\n",
-            axisNo_);
-  }
+  if (level > 0)
+    fprintf(fp, "  axis %d\n", axisNo_);
 
   // Call the base class method
   asynMotorAxis::report(fp, level);
@@ -1201,7 +1205,7 @@ asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acce
 {
   std::vector<std::string> asCommands;
   phytronStatus phyStatus;
-  int homingType;
+  int homingType(-1);
   enum pollMethod iPollMethod(iPollMethod_);
   if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
 
@@ -1227,6 +1231,7 @@ asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acce
     //Homing procedures for rotational movements (no hardware limit switches)
     else if(homingType == referenceCenter) sprintf(pC_->outString_, "M%sRC+", axisModuleNo_);
     else if(homingType == referenceCenterEncoder) sprintf(pC_->outString_, "M%sRC+^I", axisModuleNo_);
+    else return asynError;
   } else {
     if(homingType == limit) sprintf(pC_->outString_, "M%sR-", axisModuleNo_);
     else if(homingType == center) sprintf(pC_->outString_, "M%sR-C", axisModuleNo_);
@@ -1236,6 +1241,7 @@ asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acce
     //Homing procedures for rotational movements (no hardware limit switches)
     else if(homingType == referenceCenter) sprintf(pC_->outString_, "M%sRC-", axisModuleNo_);
     else if(homingType == referenceCenterEncoder) sprintf(pC_->outString_, "M%sRC-^I", axisModuleNo_);
+    else return asynError;
   }
   asCommands.push_back(const_cast<const char*>(pC_->outString_));
 
@@ -1520,8 +1526,8 @@ static const iocshArg phytronCreateAxisArg0 = {"Controller Name", iocshArgString
 static const iocshArg phytronCreateAxisArg1 = {"Module index", iocshArgInt};
 static const iocshArg phytronCreateAxisArg2 = {"Axis index", iocshArgInt};
 static const iocshArg* const phytronCreateAxisArgs[] = {&phytronCreateAxisArg0,
-                                                      &phytronCreateAxisArg1,
-                                                      &phytronCreateAxisArg2};
+                                                        &phytronCreateAxisArg1,
+                                                        &phytronCreateAxisArg2};
 
 /** Parameters for iocsh phytron controller registration */
 static const iocshArg phytronCreateControllerArg0 = {"Port name", iocshArgString};
@@ -1531,11 +1537,11 @@ static const iocshArg phytronCreateControllerArg3 = {"Idle poll period (ms)", io
 static const iocshArg phytronCreateControllerArg4 = {"Timeout (ms)", iocshArgDouble};
 static const iocshArg phytronCreateControllerArg5 = {"Do not restart controller with IOC", iocshArgInt};
 static const iocshArg * const phytronCreateControllerArgs[] = {&phytronCreateControllerArg0,
-                                                             &phytronCreateControllerArg1,
-                                                             &phytronCreateControllerArg2,
-                                                             &phytronCreateControllerArg3,
-                                                             &phytronCreateControllerArg4,
-                                                             &phytronCreateControllerArg5};
+                                                               &phytronCreateControllerArg1,
+                                                               &phytronCreateControllerArg2,
+                                                               &phytronCreateControllerArg3,
+                                                               &phytronCreateControllerArg4,
+                                                               &phytronCreateControllerArg5};
 
 /** Parameters for iocsh phytron brake(s) output registration */
 static const iocshArg phytronBrakeOutputArg0 = {"Controller Name", iocshArgString};

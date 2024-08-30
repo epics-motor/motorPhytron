@@ -5,7 +5,7 @@ USAGE...    Motor record  support for Phytron Axis controller.
 Tom Slejko & Bor Marolt
 Cosylab d.d. 2014
 
-Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2023
+Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2024
 
 */
 
@@ -17,8 +17,8 @@ Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2023
 //Number of controller specific parameters
 #define NUM_PHYTRON_PARAMS 33
 
-#define MAX_VELOCITY      40000 //steps/s
-#define MIN_VELOCITY      1     //steps/s
+#define MAX_VELOCITY      500000 //steps/s
+#define MIN_VELOCITY      1      //steps/s
 
 #define MAX_ACCELERATION  500000  // steps/s^2
 #define MIN_ACCELERATION  4000    // steps/s^2
@@ -112,11 +112,11 @@ public:
 
   asynStatus configureBrake(float fOutput, bool bDisableMotor, double dEngageTime, double dReleaseTime);
 
-  char  axisModuleNo_[5];  //Used by sprintf to form commands
-  float brakeOutput_;      //<module>.<index> of digital output to drive for brake (or -1)
-  int   disableMotor_;     //bit0: 0=keep motor enabled, 1=disable idle motor/enable when moved, bit1: 0=disabled, 1=enabled
-  float brakeEngageTime_;  //time to engage brake (disable motor after this time in milliseconds)
-  float brakeReleaseTime_; //time to release brake (start move after this time in milliseconds)
+  char  axisModuleNo_[5];         ///<Used by sprintf to form commands
+  float brakeOutput_;             ///<<module>.<index> of digital output to drive for brake (or -1)
+  int   disableMotor_;            ///<bit0: 0=keep motor enabled, 1=disable idle motor/enable when moved, bit1: 0=disabled, 1=enabled
+  float brakeEngageTime_;         ///<time to engage brake (disable motor after this time in milliseconds)
+  float brakeReleaseTime_;        ///<time to release brake (start move after this time in milliseconds)
 
 protected:
   void appendRequestString(std::vector<std::string> &asCommands) const;
@@ -130,12 +130,10 @@ private:
   phytronStatus setAcceleration(std::vector<std::string>* pCmdList, double acceleration, int movementType);
   phytronStatus setBrakeOutput(std::vector<std::string>* pCmdList, bool bWantToMoveMotor);
 
-  phytronStatus lastStatus;
-  int brakeReleased_;
-  enum pollMethod iPollMethod_; // individual poll method for this axis
-
-  // Workaround for homing type limit
-  int homeState_;
+  phytronStatus lastStatus;     ///< last Phytron status
+  int brakeReleased_;           ///< state of brake
+  enum pollMethod iPollMethod_; ///< individual poll method for this axis
+  int homeState_;               ///< state machine for work around homing to limit switches
 
 friend class phytronController;
 };
@@ -208,7 +206,7 @@ private:
   double timeout_;
   phytronStatus lastStatus;
   bool do_initial_readout_;
-  enum pollMethod iDefaultPollMethod_; // default poll method for every axis
+  enum pollMethod iDefaultPollMethod_; ///< default poll method for every axis
 
   static void epicsInithookFunction(initHookState iState);
 

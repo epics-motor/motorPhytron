@@ -1,5 +1,5 @@
 # motorPhytron
-EPICS motor drivers for the following [Phytron GmbH](https://www.phytron.eu/) controllers: I1AM01 Stepper Motor Controller
+EPICS motor drivers for the following [Phytron GmbH](https://www.phytron.eu/) controllers: I1AM01, I1AM02, I1EM01, I1EM02 Stepper Motor Controller
 
 [![Build Status](https://github.com/epics-motor/motorPhytron/actions/workflows/ci-scripts-build.yml/badge.svg)](https://github.com/epics-motor/motorPhytron/actions/workflows/ci-scripts-build.yml)
 <!--[![Build Status](https://travis-ci.org/epics-motor/motorPhytron.png)](https://travis-ci.org/epics-motor/motorPhytron)-->
