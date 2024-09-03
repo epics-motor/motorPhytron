@@ -510,11 +510,11 @@ asynStatus phytronController::readOption(asynUser *pasynUser, const char *key, c
       int iLen(0);
       value[0] = '\0';
       for (int i = 0; i < ARRAY_SIZE(fake_homed_cache_); ++i) {
-	snprintf(&value[iLen], maxChars - iLen, "%s%u", i ? "," : "", fake_homed_cache_[i]);
-	value[maxChars - 1] = '\0';
-	iLen += strlen(&value[iLen]);
-	if ((iLen + 1) >= maxChars)
-	  break;
+        snprintf(&value[iLen], maxChars - iLen, "%s%u", i ? "," : "", fake_homed_cache_[i]);
+        value[maxChars - 1] = '\0';
+        iLen += strlen(&value[iLen]);
+        if ((iLen + 1) >= maxChars)
+          break;
       }
       return asynSuccess;
     }
@@ -601,7 +601,7 @@ asynStatus phytronController::writeOption(asynUser *pasynUser, const char *key, 
              epicsStrCaseCmp(value, "on") == 0)
     {
       if (sendPhytronCommand(std::string("R1001=") + std::to_string(fake_homed_cache_[0])) != phytronSuccess)
-	return asynError;
+        return asynError;
       fake_homed_enable_ = true;
     }
     else if (epicsStrCaseCmp(value, "f") == 0 || epicsStrCaseCmp(value, "false") == 0 ||
@@ -734,15 +734,15 @@ asynStatus phytronController::poll()
         while (fake_homed_enable_)
         {
           double dTmp(static_cast<double>(epicsNAN));
-	  const char* szValue;
+          const char* szValue;
           if (asCommands.empty())
           {
             iResult = asynError;
             break;
           }
-	  szValue = asResponses.front().c_str();
-	  if (*szValue++ != '\x06') // need ACK here
-	    iResult = asynError;
+          szValue = asResponses.front().c_str();
+          if (*szValue++ != '\x06') // need ACK here
+            iResult = asynError;
           if (epicsParseDouble(szValue, &dTmp, NULL) != 0)
             iResult = asynError;
           else if (!isfinite(dTmp) || floor(dTmp + 0.5) < 0. || floor(dTmp + 0.5) >= 65536.)
@@ -1531,8 +1531,8 @@ asynStatus phytronAxis::poll(bool *moving)
       // communicate
       phyStatus = pC_->sendPhytronMultiCommand(asCommands, asResponses, false, iPollMethod == pollMethodSerial);
       if (phyStatus == phytronSuccess) // on success: parse answers
-	if (!parseAnswer(asResponses) || !asResponses.empty())
-	  phyStatus = phytronInvalidReturn;
+        if (!parseAnswer(asResponses) || !asResponses.empty())
+          phyStatus = phytronInvalidReturn;
       CHECK_AXIS("poll", "Reading axis", this, setIntegerParam(pC_->motorStatusProblem_, 1); \
         callParamCallbacks(); pC_->phyToAsyn(phyStatus));
       break;
@@ -1635,10 +1635,10 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
 
   iHighLimit = (iAxisStatus & 0x10) ? 1 : 0;
   iLowLimit  = (iAxisStatus & 0x20) ? 1 : 0;
-  bResult = !(iAxisStatus & 0xF800); // axis internal/limit-switch/power-stage/SFI/ENDAT error
   if (homeState_ >> 1) {
-      // workaround for home on limit switch
+    // workaround for home on limit switch
     int iHomingType(-1);
+    bResult = !(iAxisStatus & 0xE800); // axis internal/power-stage/SFI/ENDAT error
     if (homeState_ & 1)
       iHighLimit = 0;
     else
@@ -1660,21 +1660,23 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
             iLowLimit = 1;
         }
         if ((homeState_ >> 1) >= 4)
-	{
-	  // end-of-reference: in case of triggered limit switches, Phytron
-	  // sets "limit switch error", which should be cleared, if no
-	  // other problem was detected [manual SEm.n]
-	  int iMask((homeState_ & 1) ? 0xFA29 : 0xFA19);
-	  if ((iAxisStatus & iMask) == 0x1208)
-	    pC_->sendPhytronCommand(std::string("SEC") + axisModuleNo_);
+        {
+          // end-of-reference: in case of triggered limit switches, Phytron
+          // sets "limit switch error", which should be cleared, if no
+          // other problem was detected [manual SEm.n]
+          int iMask((homeState_ & 1) ? 0xFA29 : 0xFA19);
+          if ((iAxisStatus & iMask) == 0x1208)
+            bResult = (pC_->sendPhytronCommand(std::string("SEC") + axisModuleNo_) == phytronSuccess);
           homeState_ = 0;
-	}
+        }
         break;
       default:
         homeState_ = 0;
         break;
     }
   }
+  else
+    bResult = !(iAxisStatus & 0xF800); // axis internal/limit-switch/power-stage/SFI/ENDAT error
   setIntegerParam(pC_->motorStatusHighLimit_, iHighLimit);
   setIntegerParam(pC_->motorStatusLowLimit_,  iLowLimit);
   setIntegerParam(pC_->motorStatusAtHome_, (iAxisStatus & 0x40)/0x40);
