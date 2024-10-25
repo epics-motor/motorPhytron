@@ -729,7 +729,8 @@ asynStatus phytronController::poll()
     {
       // communicate
       iResult = phyToAsyn(sendPhytronMultiCommand(asCommands, asResponses, true));
-      if (iResult == asynSuccess) {
+      if (iResult == asynSuccess)
+      {
         // handle answers
         while (fake_homed_enable_)
         {
@@ -764,6 +765,12 @@ asynStatus phytronController::poll()
         if (!asResponses.empty())
           iResult = asynError;
       }
+      else if (!apTodoAxis.empty())
+        for (std::vector<phytronAxis*>::iterator it = axes.begin(); it != axes.end(); ++it)
+        {
+          (*it)->setIntegerParam(motorStatusProblem_, 1); // set problem bit
+          (*it)->callParamCallbacks();
+        }
     }
   }
   if (iResult != asynSuccess)
@@ -1531,8 +1538,12 @@ asynStatus phytronAxis::poll(bool *moving)
       // communicate
       phyStatus = pC_->sendPhytronMultiCommand(asCommands, asResponses, false, iPollMethod == pollMethodSerial);
       if (phyStatus == phytronSuccess) // on success: parse answers
+      {
         if (!parseAnswer(asResponses) || !asResponses.empty())
           phyStatus = phytronInvalidReturn;
+      }
+      else
+        setIntegerParam(pC_->motorStatusProblem_, 1); // set problem bit
       CHECK_AXIS("poll", "Reading axis", this, setIntegerParam(pC_->motorStatusProblem_, 1); \
         callParamCallbacks(); pC_->phyToAsyn(phyStatus));
       break;
