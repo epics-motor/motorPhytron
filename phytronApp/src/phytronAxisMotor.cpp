@@ -185,10 +185,10 @@ phytronController::phytronController(phytronController::TYPE iCtrlType, const ch
 
       //Wait for reset to finish
       epicsThreadSleep(5.0);
-      epicsTimeGetMonotonic(&tStart);
+      epicsTimeGetCurrent(&tStart);
       while (sendPhytronCommand(std::string("S")) != phytronSuccess)
       {
-        epicsTimeGetMonotonic(&tNow);
+        epicsTimeGetCurrent(&tNow);
         if (epicsTimeDiffInSeconds(&tNow, &tStart) >= 120.)
         {
           asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
