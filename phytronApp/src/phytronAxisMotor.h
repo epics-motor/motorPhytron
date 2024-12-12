@@ -142,7 +142,9 @@ friend class phytronController;
 class phytronController : public asynMotorController
 {
 public:
-  phytronController(const char *portName, const char *phytronPortName, double movingPollPeriod, double idlePollPeriod, double timeout, bool resetAtBoot);
+  enum TYPE { TYPE_PHYMOTION, TYPE_MCC };
+
+  phytronController(TYPE iCtrlType, const char *portName, const char *phytronPortName, int address, double movingPollPeriod, double idlePollPeriod, double timeout, bool resetAtBoot);
   asynStatus readInt32(asynUser *pasynUser, epicsInt32 *value);
   asynStatus writeInt32(asynUser *pasynUser, epicsInt32 value);
   asynStatus readFloat64(asynUser *pasynUser, epicsFloat64 *value);
@@ -166,6 +168,7 @@ public:
 
   char * controllerName_;
   std::vector<phytronAxis*> axes;
+  enum TYPE iCtrlType_;                ///< controller type
 
 protected:
   //Additional parameters used by additional records
@@ -204,13 +207,15 @@ protected:
   int axisBrakeReleaseTime_;
 
 private:
-  double timeout_;
-  phytronStatus lastStatus;
-  bool do_initial_readout_;
+  int    iAddress_;                    ///< serial address of controller
+  double timeout_;                     ///< communication timeout
+  phytronStatus lastStatus;            ///< last communication status
+  bool do_initial_readout_;            ///< helper for initIOC hook to wait for first poll
   enum pollMethod iDefaultPollMethod_; ///< default poll method for every axis
   bool fake_homed_enable_;             ///< enable fake HOMED bits with help Phytron registers 1001...1020 (max. 20 module positions)
   epicsUInt16 fake_homed_cache_[20];   ///< cached value, which is updated with every poll (max. 20 module positions)
   bool allow_exit_on_error_;           ///< allow exit(1) on error
+  std::string sLastSUI;                ///< last response to SUI command (MCC only)
 
   static void epicsInithookFunction(initHookState iState);
 

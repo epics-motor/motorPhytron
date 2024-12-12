@@ -4,10 +4,10 @@
 
 ## Register all support components
 dbLoadDatabase("../../dbd/phytron.dbd",0,0)
-phytron_registerRecordDeviceDriver(pdbbase) 
+phytron_registerRecordDeviceDriver(pdbbase)
 
 #drvAsynIPPortConfigure("testPort","localhost:8000",0,0,1)
-drvAsynIPPortConfigure("testRemote","10.5.1.181:22222",0,0,1)
+#drvAsynIPPortConfigure("testRemote","10.5.1.181:22222",0,0,1)
 #drvAsynSerialPortConfigure("testRemote","/dev/ttyUSB0",0,0,1)
 #asynSetOption("testRemote", -1, "baud", "115200")
 #asynSetOption("testRemote", -1, "bits", "8")
@@ -15,18 +15,31 @@ drvAsynIPPortConfigure("testRemote","10.5.1.181:22222",0,0,1)
 #asynSetOption("testRemote", -1, "stop", "1")
 #asynSetOption("testRemote", -1, "clocal", "N")
 #asynSetOption("testRemote", -1, "crtscts", "N")
+drvAsynIPPortConfigure("testRemote","192.168.167.116:22222",0,0,1)
 
-#phytronCreateController (phytronPort, asynPort, movingPollPeriod, idlePollPeriod, timeout)
-phytronCreateController ("phyMotionPort", "testRemote", 10, 10, 1000)
-asynSetOption("phyMotionPort", 0, "pollMethod", "parallel")
+#phytronCreateMCC(phytronPort, asynPort, address, movingPollPeriod, idlePollPeriod, timeout, do-not-reset
+phytronCreateMCC("phyMotionPort", "testRemote", 0, 10, 10, 1000)
 asynSetOption("phyMotionPort", 0, "fakeHomedEnable", "true")
 
 #phytronCreateAxis(phytronPort, module, axis)
-phytronCreateAxis("phyMotionPort", 1, 1)
-phytronCreateAxis("phyMotionPort", 2, 1)
-phytronCreateAxis("phyMotionPort", 3, 1)
+phytronCreateAxis("phyMotionPort", 0, 1)
+phytronCreateAxis("phyMotionPort", 0, 2)
 
 dbLoadTemplate "motor.substitutions.phytron"
+
+# open listening server part
+#drvAsynIPServerPortConfigure(asynPortServer,"localhost:port",maxClients,priority,disableAutoConnect,noProcessEos)
+drvAsynIPServerPortConfigure("testRemote2","127.0.0.2:22222",10,0,0,0)
+#drvAsynIPServerPortConfigure("testRemote2","localhost:22222",10,0,0,0)
+#drvAsynIPServerPortConfigure("testRemote2",":22222",10,0,0,0)
+#drvAsynIPServerPortConfigure("testRemote2","0.0.0.0:22222",10,0,0,0)
+#drvAsynIPServerPortConfigure("testRemote2","192.168.167.254:22222",10,0,0,0)
+
+# connect both together with TCP forwarder
+#forwardAsyn(asynPortServer, asynPortClient, forwardingMode, readtmo, writetmo)**
+#  timeout in ms (-1 to disable)
+#  forwardingMode: 0=text/CRLF, 1=text/CR, 2=text/LF, 3=dumb/no-EOL, 4=phyMotion, 5=Modbus/RTU, 6=Modbus/ASCII, 7=Modbus/TCP
+forwardAsyn("testRemote2", "testRemote", 4, -1, 1000)
 
 ## configure AUTOSAVE
 #epicsEnvSet("SAVE_DIR","$(TOP)/iocBoot/$(IOC)")

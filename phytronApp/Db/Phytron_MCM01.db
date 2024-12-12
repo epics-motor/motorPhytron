@@ -220,4 +220,3 @@ record(bo, "$(P)-RESET-STATUS")
     field(ONAM, "RESET")
     field(ZNAM, "RESET")
 }
-

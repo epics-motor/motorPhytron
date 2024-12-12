@@ -1,5 +1,6 @@
 ********************************************************************************
-Phytron I1AM01, I1AM02, I1EM01, I1EM02 Stepper Motor Controller
+Phytron phyMOTION I1AM01, I1AM02, I1EM01, I1EM02 Stepper Motor Controller
+Phytron MCC-1, MCC-2 Stepper Motor Controller
 Asyn Driver Documentation
 
 Authors: Tom Slejko, Bor Marolt, Cosylab d.d.
@@ -23,9 +24,10 @@ Table of contents:
          - Reset
          - I1AM01, I1AM02, I1EM01, I1EM02 parameters
     - Supported MCM01 Features
+    - Supported MCC-1, MCC-2 Features
     - Motor record
-    - List of remaining I1AM01, I1AM02, I1EM01, I1EM02 parameters handled by
-      the motor record, internally by controller, or not applicable
+    - List of remaining I1AM01, I1AM02, I1EM01, I1EM02, MCC-1, MCC-2 parameters
+      handled by the motor record, internally by controller, or not applicable
 - GUI
 - Asyn option interface
 
@@ -56,6 +58,7 @@ The following dbd files and libraries must be added to the $(APP)/src/Makefile:
 test_DBD += asyn.dbd
 test_DBD += motorSupport.dbd
 test_DBD += drvAsynIPPort.dbd
+test_DBD += drvAsynSerialPort.dbd  # for use of USB communication
 test_DBD += phytron.dbd
 
 test_LIBS += asyn
@@ -74,8 +77,9 @@ Start up script must perform the following:
 Before configuring the controller the user must create an asyn port by running 
 drvAsynIPPortConfigure or drvAsynSerialPortConfigure in order to create a 
 communication interface to Phytron's MCM Unit which controlls the I1AM01,
-I1AM02, I1EM01 and I1EM02 modules. Below any type of I1AM01 means also the
-other types I1AM02, I1EM01, I1EM02.
+I1AM02, I1EM01 and I1EM02 modules or Phytron MCC Unit which controlls the MCC-1
+or MCC-2 axes. Below any type of I1AM01 means also the other types I1AM02,
+I1EM01, I1EM02, MCC-1 and MCC-2.
 
 If serial port is used for communication with the controller, baud rate, number
 of data bits, parity, number of stop bits and End Of Line character must be set,
@@ -91,28 +95,38 @@ asynSetOption ("testRemote", -1, "stop", "1")
 If ethernet is used, the IP and port must be set, e.g.:
 drvAsynIPPortConfigure("testRemote","10.5.1.181:22222",0,0,1)
 
-Phytron (MCM) controller port is configured (and connected to previously created
-asyn port) by running the following iocsh function:
+Phytron (phyMOTION MCM) controller port is configured (and connected to
+previously created asyn port) by running the following iocsh function:
 
 phytronCreateController(const char *phytronPortName, const char *asynPortName,
-                int movingPollPeriod, int idlePollPeriod, double timeout, int noResetAtBoot)
-- phytronPortName: Name of the particular MCM unit.
-- asynPortName: Name of the previously configured asyn port - interface to MCM
+                        int movingPollPeriod, int idlePollPeriod,
+                        double timeout, int noResetAtBoot)
+
+or Phytron (MCC) controller port is configured (and connected to previously
+created asyn port) by running the following iocsh function:
+
+phytronCreateMCC(const char *phytronPortName, const char *asynPortName,
+                 int address, int movingPollPeriod, int idlePollPeriod,
+                 double timeout, int noResetAtBoot)
+
+- phytronPortName: Name of the particular MCM or MCC unit.
+- asynPortName: Name of the previously configured asyn port (MCM/MCC interface)
+- address (MCC only): hardware address switch value 0..15
 - movingPollPeriod: The time between polls when any axis is moving in ms
 - idlePolPeriod: The time between polls when no axis is moving in ms
 - Timeout: Milliseconds before timeout for I/O requests
 - noResetAtBoot: if 1 then the controller is not reset at boot. If unset or 0 it is
 
-where poll reads the basic axis status, e.g. position of the motor and of the 
-encoder, checks if axis is in movement, checks if motor is at the limit 
+where poll reads the basic axis status, e.g. position of the motor and of the
+encoder, checks if axis is in movement, checks if motor is at the limit
 switch, ...
 
 Once the phytron controller is configured, user can initialize axes by running
 
 phytronCreateAxis(const char* phytronPortName, int module, int axis)
-- phytronPortName: Previously defined name of the MCM unit
-- module: index of the I1AM01 module connected to the MCM
-- axis: index of the axis on the I1AM01 module (starting with 1)
+- phytronPortName: Previously defined name of the MCM/MCC unit
+- module: index of the motor module connected to the MCM, MCC: use 0
+- axis: index of the axis on the motor module (starting with 1)
 
 Module index and axis index compose the axis asyn ADDR (ADDR macro) used in the
 motor.substitutions file. 
@@ -124,11 +138,11 @@ command phytronBrakeOutput could be used to configure this:
 
 phytronBrakeOutput(const char* phytronPortName, float fAxis, float fOutput,
                    int bDisableMotor, double dEngageTime, double dReleaseTime)
-- phytronPortName: Previously defined name of the MCM unit
+- phytronPortName: Previously defined name of the MCM/MCC unit
 - fAxis:   <module>.<axis> as float number for axis selection
 - fOutput: <module>.<output> as float number for digital output selection
                    or 0.0 to disable, negative value inverts output
--  bDisableMotor:   0=keep motor enabled, 1=disable motor output, when idle
+- bDisableMotor:   0=keep motor enabled, 1=disable motor output, when idle
 - dEngageTime:     time is milliseconds to engage brake (max. 10 sec)
                    and the motor is disabled after this time
 - dReleaseTime:    time is milliseconds to release brake (max. 10 sec)
@@ -174,7 +188,6 @@ phytronCreateController ("phyMotionPort", "testRemote", 100, 100, 1000)
 #phytronCreateAxis(phytronPort, module, axis)
 phytronCreateAxis("phyMotionPort", 1, 1)
 phytronCreateAxis("phyMotionPort", 2, 1)
-
 
 cd $(MOTOR)/iocBoot/iocWithAsyn/
 dbLoadTemplate "motor.substitutions.phytron"
@@ -360,7 +373,7 @@ RECORDS: ai: $(P)$(M)-MOTOR-TEMP
 
 
 ============================================
-MC01 Controller Features - Phytron_MCM01.db:
+MCM01 Controller Features - Phytron_MCM01.db:
 ============================================
 This database file contains records for reading MCM01 status and to reset the 
 MCM01 module.
@@ -489,16 +502,16 @@ mbbiDirect record
 
 Asyn option interface:
 ======================
-This support want to be backward compatible to older versions as much as
+This support wants to be backward compatible to older versions as much as
 possible. It supports setting additional options via the asyn option interface
 with iocsh commands "asynSetOption" or "asynShowOption". ADDR=0 means the
 controller and ADDR=1... means a specific axis, which was created using
 "phytronCreateAxis" above:
 
 - asynSetOption(PORT, ADDR, "pollMethod", ...)
-  This option allows to speed up communication with controllers. Is is possible
-  to set up different methods for different axes and the controller (ADDR=0).
-  These methods are available:
+  This option allows to speed up communication with MCM controllers. Is is
+  possible to set up different methods for different axes and the controller
+  (ADDR=0). These methods are available:
   * "serial" or "no-parallel" or "not-parallel" or "old": this is the default
     method. It is compatible but slow and does a handshake (request + reply)
     for every command,
@@ -512,6 +525,7 @@ controller and ADDR=1... means a specific axis, which was created using
   Every handshake to a TCP-connected controller takes around 10ms, so the
   serial method takes 40ms per axis, the axis-parallel method takes 10ms per
   axis and the fastest controller-parallel method takes 10ms for _all_ axes.
+  Note: This option is not supported by the MCC controllers.
 - asynShowOption(PORT, ADDR, "pollMethod") shows the actual value as numeric
   value with text
 
