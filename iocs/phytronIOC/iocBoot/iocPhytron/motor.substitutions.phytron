@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: EPICS
 ################################################################################
 # PORT - asynPort created for the Phytron controller
 # ADDR - Address of the axis - right digit represents the index of the axis
@@ -59,3 +60,26 @@ pattern
 #{P,       DTYP,         PORT,             ADDR, TIMEOUT}
 #{phytron, "asynMotor",  phyMotionPort,    0,    10    }
 #}
+
+################################################################################
+# P - Controller specific name
+# PORT - asynPort created for the analog controller
+################################################################################
+file "$(TOP)/db/Phytron_AIO_MCC.db"
+{
+pattern{P,PORT}
+{"phyA1", "phyA1"}
+{"phyA2", "phyA2"}
+#{"phyA3", "phyA3"}
+#{"phyA4", "phyA4"}
+}
+file "$(TOP)/db/Phytron_DIO.db"
+{
+pattern{P,PORT}
+{"phyD1", "phyD1"}
+}
+file "$(TOP)/db/Phytron_CMD.db"
+{
+pattern{P,PORT}
+{"phyD1", "phyD1"}
+}

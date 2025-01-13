@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: EPICS
+################################################################################
+# Phytron direct command communication
+
+record(stringout, "$(P):cmd")
+{
+    field(DESC,"command to send")
+    field(DTYP,"asynOctetWrite")
+    field(OUT,"@asyn($(PORT),0)COMMAND")
+    field(FLNK,"$(P):rpy")
+}
+
+record(stringin,"$(P):rpy")
+{
+    field(DESC,"received reply")
+    field(DTYP,"asynOctetRead")
+    field(INP,"@asyn($(PORT),0)REPLY")
+    field(SCAN,"$(SCAN=I/O Intr)")
+    field(FLNK,"$(P):stat")
+}
+record(stringin,"$(P):stat")
+{
+    field(DESC,"command status")
+    field(DTYP,"asynOctetRead")
+    field(INP,"@asyn($(PORT),0)STATUS")
+    field(SCAN,"$(SCAN=I/O Intr)")
+    field(FLNK,"$(FLNK=)")
+}

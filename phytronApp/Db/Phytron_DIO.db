@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: EPICS
+################################################################################
+# Phytron phyMOTION example for DIOM01.1 module with
+#   8 digital inputs
+#   8 digital outputs
+# or a Phytron MCC-1 (MCC-2) controller with
+#   4 (8) digital inputs
+#   4 (8) digital outputs
+# with 24V logic
+
+################################################################################
+# outputs
+record(longout, "$(P):setDO$(PORT)")
+{
+    field(DESC,"set $(PORT)")
+    field(DTYP,"asynInt32")
+    field(OUT,"@asyn($(PORT),0)OUT")
+    field(FLNK,"$(P):rbkDO$(PORT)")
+}
+# read back the output value
+record(longin,"$(P):rbkDO$(PORT)")
+{
+    field(DESC,"hw-set $(PORT)")
+    field(DTYP,"asynInt32")
+    field(INP,"@asyn($(PORT),0)OUT")
+    field(SCAN,"$(SCAN=I/O Intr)")
+    field(FLNK,"$(P):rdDI$(PORT)")
+}
+
+################################################################################
+# inputs
+record(longin,"$(P):rdDI$(PORT)")
+{
+    field(DESC,"read $(PORT)")
+    field(DTYP,"asynInt32")
+    field(INP,"@asyn($(PORT),0)IN")
+    field(SCAN,"$(SCAN=I/O Intr)")
+    field(FLNK,"$(FLNK=)")
+}

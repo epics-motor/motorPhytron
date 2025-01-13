@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: EPICS
 ################################################################################
 # This database contains records corresponding to additional parameters (not 
 # handled by the motor record) of the I1AM01 motion controller.

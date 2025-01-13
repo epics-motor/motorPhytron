@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: EPICS
 ################################################################################
 # This database contains records used to monitor status and reset the MCM01
 # controller.

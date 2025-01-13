@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: EPICS
 record(motor,"$(P)$(M)")
 {
 	info(autosaveFields, "DVAL DIR VELO VBAS VMAX ACCL BDST BVEL BACC MRES ERES PREC EGU DHLM DLLM OFF")

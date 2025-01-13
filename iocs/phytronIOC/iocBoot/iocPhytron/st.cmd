@@ -1,4 +1,5 @@
 #!../../bin/linux-x86_64/phytron
+# SPDX-License-Identifier: EPICS
 
 < envPaths
 

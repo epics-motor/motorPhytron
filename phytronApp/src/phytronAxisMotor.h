@@ -1,11 +1,12 @@
 /*
+SPDX-License-Identifier: EPICS
 FILENAME... phytronAxisMotor.h
 USAGE...    Motor record  support for Phytron Axis controller.
 
 Tom Slejko & Bor Marolt
 Cosylab d.d. 2014
 
-Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2024
+Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2025
 
 */
 
@@ -94,22 +95,28 @@ enum pollMethod{
   pollMethodControllerParallel =  2  /// controller-parallel: combine up to 32 axes a 3 commands/replies into one string
 };
 
+class phytronController;
+class phytronIO;
 class phytronAxis : public asynMotorAxis
 {
 public:
-  /* These are the methods we override from the base class */
-  phytronAxis(class phytronController *pC, int axis);
+  // common asyn functions
+  phytronAxis(class phytronController *pC, int iAxisNo);
   void report(FILE *fp, int level);
+
+  // motor record functions
   asynStatus move(double position, int relative, double min_velocity, double max_velocity, double acceleration);
   asynStatus moveVelocity(double min_velocity, double max_velocity, double acceleration);
   asynStatus home(double min_velocity, double max_velocity, double acceleration, int forwards);
   asynStatus stop(double acceleration);
   asynStatus poll(bool *moving);
   asynStatus setPosition(double position);
-
   asynStatus setEncoderRatio(double ratio);
   asynStatus setEncoderPosition(double position);
 
+  // phytron axis functions
+  static int phytronCreateAxis(const char* szControllerName, int iModule, int iAxis);
+  static int phytronBrakeOutput(const char* szControllerName, float fAxis, float fOutput, int bDisableMotor, double dEngageTime, double dReleaseTime);
   asynStatus configureBrake(float fOutput, bool bDisableMotor, double dEngageTime, double dReleaseTime);
 
   char  axisModuleNo_[5];         ///<Used by sprintf to form commands
@@ -131,7 +138,7 @@ private:
   phytronStatus setAcceleration(std::vector<std::string>* pCmdList, double acceleration, int movementType);
   phytronStatus setBrakeOutput(std::vector<std::string>* pCmdList, bool bWantToMoveMotor);
 
-  phytronStatus lastStatus;     ///< last Phytron status
+  phytronStatus lastStatus_;    ///< last Phytron status
   int brakeReleased_;           ///< state of brake
   enum pollMethod iPollMethod_; ///< individual poll method for this axis
   int homeState_;               ///< state machine for work around homing to limit switches
@@ -144,30 +151,36 @@ class phytronController : public asynMotorController
 public:
   enum TYPE { TYPE_PHYMOTION, TYPE_MCC };
 
-  phytronController(TYPE iCtrlType, const char *portName, const char *phytronPortName, int address, double movingPollPeriod, double idlePollPeriod, double timeout, bool resetAtBoot);
-  asynStatus readInt32(asynUser *pasynUser, epicsInt32 *value);
-  asynStatus writeInt32(asynUser *pasynUser, epicsInt32 value);
-  asynStatus readFloat64(asynUser *pasynUser, epicsFloat64 *value);
-  asynStatus writeFloat64(asynUser *pasynUser, epicsFloat64 value);
-  asynStatus readOption(asynUser *pasynUser, const char *key, char *value, int maxChars);
-  asynStatus writeOption(asynUser *pasynUser, const char *key, const char *value);
-
+  // common asyn functions
+  phytronController(TYPE iCtrlType, const char* szPhytronPortName, const char* szAsynPortName, int iAddress, double iMovingPollPeriod, double iIdlePollPeriod, double dTimeout, bool iNoResetAtBoot);
+  asynStatus readInt32(asynUser* pasynUser, epicsInt32* piValue);
+  asynStatus writeInt32(asynUser* pasynUser, epicsInt32 iValue);
+  asynStatus readFloat64(asynUser* pasynUser, epicsFloat64* pdValue);
+  asynStatus writeFloat64(asynUser* pasynUser, epicsFloat64 dValue);
+  asynStatus readOption(asynUser* pasynUser, const char* szKey, char* szValue, int iMaxChars);
+  asynStatus writeOption(asynUser* pasynUser, const char* szKey, const char* szValue);
   void report(FILE *fp, int level);
+
+  // motor record functions
   phytronAxis* getAxis(asynUser *pasynUser);
   phytronAxis* getAxis(int axisNo);
   asynStatus poll();
 
+  // phytron controller functions
+  static int phytronCreatePhymotion(const char* szPhytronPortName, const char* szAsynPortName, int iMovingPollPeriod, int iIdlePollPeriod, double dTimeout, int iNoResetAtBoot);
+  static int phytronCreateMCC(const char* szPhytronPortName, const char* szAsynPortName, int iAddress, int iMovingPollPeriod, int iIdlePollPeriod, double dTimeout, int iNoResetAtBoot);
   phytronStatus sendPhytronCommand(std::string sCommand, std::string &sResponse, bool bACKonly = true);
   phytronStatus sendPhytronCommand(std::string sCommand, std::string* psResponse = nullptr, bool bACKonly = true);
   phytronStatus sendPhytronMultiCommand(std::vector<std::string> asCommands, std::vector<std::string> &asResponses, bool bAllowNAK = false, bool bForceSingle = false);
-
   void resetAxisEncoderRatio();
 
   //casts phytronStatus to asynStatus
-  asynStatus    phyToAsyn(phytronStatus phyStatus);
+  static asynStatus phyToAsyn(phytronStatus phyStatus);
+  static std::string escapeC(std::string sIn);
 
   char * controllerName_;
-  std::vector<phytronAxis*> axes;
+  std::vector<phytronAxis*> axes_;
+  std::vector<phytronIO*> IOs_;
   enum TYPE iCtrlType_;                ///< controller type
 
 protected:
@@ -207,17 +220,20 @@ protected:
   int axisBrakeReleaseTime_;
 
 private:
+  static std::vector<phytronController*> controllers_; ///< list of all phytron controllers
   int    iAddress_;                    ///< serial address of controller
   double timeout_;                     ///< communication timeout
-  phytronStatus lastStatus;            ///< last communication status
+  phytronStatus lastStatus_;           ///< last communication status
   bool do_initial_readout_;            ///< helper for initIOC hook to wait for first poll
   enum pollMethod iDefaultPollMethod_; ///< default poll method for every axis
   bool fake_homed_enable_;             ///< enable fake HOMED bits with help Phytron registers 1001...1020 (max. 20 module positions)
   epicsUInt16 fake_homed_cache_[20];   ///< cached value, which is updated with every poll (max. 20 module positions)
   bool allow_exit_on_error_;           ///< allow exit(1) on error
-  std::string sLastSUI;                ///< last response to SUI command (MCC only)
+  std::string sLastSUI_;               ///< last response to SUI command (MCC only)
+  std::string sCtrlType_;              ///< controller type
 
   static void epicsInithookFunction(initHookState iState);
 
 friend class phytronAxis;
+friend class phytronIO;
 };

@@ -1,1 +1,2 @@
+# SPDX-License-Identifier: EPICS
 registrar(phytronRegister)

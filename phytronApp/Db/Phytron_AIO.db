@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: EPICS
+################################################################################
+# Phytron phyMOTION example for AIOM01.1 module with
+#   4 analog inputs (14bit resolution)
+#   4 analog outputs (16bit resolution)
+# or one pair of AIM01.1 plus AOM01.1 module
+# the analog parts could be bipolar -10V..+10V or 0..10V or 0..20mA
+
+################################################################################
+# outputs (AOM01.1 or AIOM01.1)
+record(ao, "$(P):setVolt$(PORT)")
+{
+    field(DESC,"set $(PORT)")
+    field(DTYP,"asynInt32")
+    field(OUT, "@asyn($(PORT),0)OUT")
+    field(LINR,"SLOPE")
+    field(ESLO,"0.00030517878125")
+    field(EOFF,"0")
+    field(EGU ,"V")
+    field(LOPR,"-10")
+    field(HOPR,"10")
+    field(PREC,"4")
+    field(FLNK,"$(P):rbkVolt$(PORT)")
+}
+# read back the output value
+record(ai,"$(P):rbkVolt$(PORT)")
+{
+    field(DESC,"hw-set $(PORT)")
+    field(DTYP,"asynInt32")
+    field(INP, "@asyn($(PORT),0)OUT")
+    field(SCAN,"$(SCAN=I/O Intr)")
+    field(LINR,"SLOPE")
+    field(ESLO,"0.001220703125")
+    field(EOFF,"0")
+    field(EGU ,"V")
+    field(LOPR,"-10")
+    field(HOPR,"10")
+    field(PREC,"4")
+    field(FLNK,"$(P):rdVolt$(PORT)")
+}
+
+################################################################################
+# inputs (AIM01.1 or AIOM01.1)
+record(ai,"$(P):rdVolt$(PORT)")
+{
+    field(DESC,"read $(PORT)")
+    field(DTYP,"asynInt32")
+    field(INP, "@asyn($(PORT),0)IN")
+    field(SCAN,"$(SCAN=I/O Intr)")
+    field(LINR,"SLOPE")
+    field(ESLO,"0.001220703125")
+    field(EOFF,"0")
+    field(EGU ,"V")
+    field(LOPR,"-10")
+    field(HOPR,"10")
+    field(PREC,"4")
+    field(FLNK,"$(FLNK=)")
+}

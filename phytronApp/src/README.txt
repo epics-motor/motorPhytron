@@ -1,8 +1,10 @@
 ********************************************************************************
 Phytron phyMOTION I1AM01, I1AM02, I1EM01, I1EM02 Stepper Motor Controller
-Phytron MCC-1, MCC-2 Stepper Motor Controller
+Phytron MCC-1, MCC-2 Stepper Motor Controller with I/O
+Phytron DIOM01.1, AIOM01.1 Digital and Analog I/O Controller
 Asyn Driver Documentation
 
+SPDX-License-Identifier: EPICS
 Authors: Tom Slejko, Bor Marolt, Cosylab d.d.
 		tom.slejko@cosylab.com
 		bor.marolt@cosylab.com
@@ -10,6 +12,8 @@ Authors: Tom Slejko, Bor Marolt, Cosylab d.d.
 		<rossa@helmholtz-berlin.de>
 	 Will Smith, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH
 		<william.smith@helmholtz-berlin.de>
+	 Bernhard Kuner, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH
+		<bernhard.kuner@helmholtz-berlin.de>
 
 ********************************************************************************
 Table of contents:

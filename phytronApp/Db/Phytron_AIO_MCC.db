@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: EPICS
+################################################################################
+# Phytron MCC-1 (MCC-2) example
+#   1 (2) analog inputs (0V..5V, 10bit resolution)
+
+################################################################################
+# inputs
+record(ai,"$(P):rdVolt$(PORT)")
+{
+    field(DESC,"read $(PORT)")
+    field(DTYP,"asynInt32")
+    field(INP,"@asyn($(PORT),0)IN")
+    field(SCAN,"$(SCAN=I/O Intr)")
+    field(LINR,"SLOPE")
+    field(ESLO,"0.0048828125")
+    field(EOFF,"0")
+    field(EGU ,"V")
+    field(LOPR,"0")
+    field(HOPR,"5")
+    field(PREC,"4")
+    field(FLNK,"$(FLNK=)")
+}

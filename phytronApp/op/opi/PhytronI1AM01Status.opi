@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: EPICS -->
 <display typeId="org.csstudio.opibuilder.Display" version="1.0.0">
   <auto_zoom_to_fit_all>false</auto_zoom_to_fit_all>
   <macros>

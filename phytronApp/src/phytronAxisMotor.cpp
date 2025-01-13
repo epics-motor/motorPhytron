@@ -1,11 +1,12 @@
 /*
+SPDX-License-Identifier: EPICS
 FILENAME... phytronAxisMotor.cpp
 USAGE...    Motor driver support for Phytron Axis controller.
 
 Tom Slejko & Bor Marolt
 Cosylab d.d. 2014
 
-Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2024
+Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2025
 
 */
 
@@ -22,7 +23,6 @@ Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2024
 #endif
 
 #include <drvAsynIPPort.h>
-#include <iocsh.h>
 #include <epicsThread.h>
 #include <epicsStdlib.h>
 #include <epicsString.h>
@@ -30,11 +30,14 @@ Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2024
 #include <epicsMath.h>
 #include <epicsExit.h>
 #include <cantProceed.h>
-
 #include <asynOctetSyncIO.h>
 
 #include "phytronAxisMotor.h"
-#include <epicsExport.h>
+#include "phytronIOctrl.h"
+
+//******************************************************************************
+//                   DEFINES and GLOBAL VARIABLES
+//******************************************************************************
 
 using namespace std;
 
@@ -44,27 +47,27 @@ using namespace std;
 
 #define CHECK_CTRL(xfunc, xtxt, xextra) \
     if (phyStatus) { \
-      if (phyStatus != lastStatus) { \
+      if (phyStatus != lastStatus_) { \
         asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR, \
           "phytronController::%s: (%s) %s failed with error code: %d, reason: %d\n", \
           xfunc, this->controllerName_, xtxt, phyStatus, pasynUser->reason); \
-        lastStatus = phyStatus; \
+        lastStatus_ = phyStatus; \
       } \
       xextra; \
     } \
-    lastStatus = phyStatus
+    lastStatus_ = phyStatus
 
 #define CHECK_AXIS(xfunc, xtxt, xinstance, xextra) \
     if (phyStatus) { \
-      if (phyStatus != lastStatus) { \
+      if (phyStatus != lastStatus_) { \
         asynPrint(xinstance->pasynUser_, ASYN_TRACE_ERROR, \
           "phytronAxis::%s: (%s) %s for axis %d failed with error code: %d\n", \
           xfunc, xinstance->pC_->controllerName_, xtxt, xinstance->axisNo_, phyStatus); \
-        lastStatus = phyStatus; \
+        lastStatus_ = phyStatus; \
       } \
       xextra; \
     } \
-    lastStatus = phyStatus
+    lastStatus_ = phyStatus
 
 //Used for casting position doubles to integers
 #define NINT(f) (int)((f)>0 ? (f)+0.5 : (f)-0.5)
@@ -79,7 +82,11 @@ using namespace std;
  * Contains phytronController instances, phytronCreateAxis uses it to find and
  * bind axis object to the correct controller object.
  */
-static vector<phytronController*> controllers;
+std::vector<phytronController*> phytronController::controllers_;
+
+//******************************************************************************
+//                   PHYTRON CONTROLLER IMPLEMENTATION
+//******************************************************************************
 
 /** Creates a new phytronController object.
  * \param[in] iCtrlType         Controller type: phyMOTION or MCC type
@@ -91,9 +98,9 @@ static vector<phytronController*> controllers;
  * \param[in] timeout           Communication timeout in ms
  * \param[in] noResetAtBoot     if 0 or not set then controller is reset, if 1 then it's not
  */
-phytronController::phytronController(phytronController::TYPE iCtrlType, const char *phytronPortName, const char *asynPortName,
-                                     int address, double movingPollPeriod, double idlePollPeriod, double timeout, bool noResetAtBoot)
-  :  asynMotorController(phytronPortName,
+phytronController::phytronController(phytronController::TYPE iCtrlType, const char* szPhytronPortName, const char* szAsynPortName,
+                                     int iAddress, double iMovingPollPeriod, double iIdlePollPeriod, double dTimeout, bool iNoResetAtBoot)
+  :  asynMotorController(szPhytronPortName,
                          0xFF,
                          NUM_PHYTRON_PARAMS,
                          asynOptionMask, // additional interfaces
@@ -103,9 +110,9 @@ phytronController::phytronController(phytronController::TYPE iCtrlType, const ch
                          0, 0)// Default priority and stack size
 
   , iCtrlType_(iCtrlType)
-  , iAddress_(address)
-  , timeout_(timeout)
-  , lastStatus(phytronSuccess)
+  , iAddress_(iAddress)
+  , timeout_(dTimeout)
+  , lastStatus_(phytronSuccess)
   , do_initial_readout_(true)
   , iDefaultPollMethod_(pollMethodSerial)
   , fake_homed_enable_(false)
@@ -161,7 +168,7 @@ phytronController::phytronController(phytronController::TYPE iCtrlType, const ch
   createParam(axisBrakeReleaseTimeString, asynParamFloat64, &this->axisBrakeReleaseTime_);
 
   /* Connect to phytron controller */
-  status = pasynOctetSyncIO->connect(asynPortName, 0, &pasynUserController_, NULL);
+  status = pasynOctetSyncIO->connect(szAsynPortName, 0, &pasynUserController_, NULL);
   if (status) {
     asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR,
       "%s: cannot connect to phytron controller\n",
@@ -170,13 +177,13 @@ phytronController::phytronController(phytronController::TYPE iCtrlType, const ch
     // this hook forces an initial readout before the motor record has
     // finished initializing (before pass 1), so it has actual values for
     // REP, RMP, MSTA fields, especially for absolute encoders
-    if (controllers.empty())
+    if (controllers_.empty())
       initHookRegister(&phytronController::epicsInithookFunction);
 
     //phytronCreateAxis will search for the controller for axis registration
-    controllers.push_back(this);
+    controllers_.push_back(this);
 
-    if (noResetAtBoot != 1) {
+    if (iNoResetAtBoot != 1) {
       epicsTimeStamp tStart, tNow;
       //RESET THE CONTROLLER
       if (sendPhytronCommand(std::string("CR")))
@@ -199,50 +206,77 @@ phytronController::phytronController(phytronController::TYPE iCtrlType, const ch
       }
     }
 
-    startPoller(movingPollPeriod, idlePollPeriod, 5);
+    if (iCtrlType == TYPE_MCC)
+    {
+      std::string sTmp;
+      sendPhytronCommand(std::string("IAR"), sCtrlType_);
+      sCtrlType_.insert(0, "MCC-");
+      if (sendPhytronCommand(std::string("1P48R"), sTmp) == phytronSuccess)
+      {
+        long lType(-1);
+        if (epicsParseLong(sTmp.c_str(), &lType, 0, NULL) != 0)
+          lType = -1;
+        switch (lType)
+        {
+          case 0: break; // MCC-1/MCC-2 chopper
+          case 1: sCtrlType_.append(" LIN"); break; // MCC-1 linear
+          default:
+            sCtrlType_.append(" type");
+            sCtrlType_.append(sTmp);
+            break;
+        }
+      }
+    }
+    else
+      sendPhytronCommand(std::string("IM0"), sCtrlType_);
+    sCtrlType_ = escapeC(sCtrlType_);
+
+    startPoller(iMovingPollPeriod, iIdlePollPeriod, 5);
   }
 }
 
 /** Creates a new phytronController object for a Phytron phyMOTION.
   * Configuration command, called directly or from iocsh
-  * \param[in] portName          The name of the asyn port that will be created for this driver
-  * \param[in] phytronPortName   The name of the drvAsynIPPPort that was created previously to connect to the phytron controller
-  * \param[in] movingPollPeriod  The time in ms between polls when any axis is moving
-  * \param[in] idlePollPeriod    The time in ms between polls when no axis is moving
-  * \param[in] timeout           Communication timeout in ms
-  * \param[in] noResetAtBoot     if 0 or not set then controller is reset, if 1 then it's not
+  * \param[in] szPhytronPortName  The name of the asyn port that will be created for this driver
+  * \param[in] szAsynPortName     The name of the drvAsynIPPPort that was created previously to connect to the phytron controller
+  * \param[in] iMovingPollPeriod  The time in ms between polls when any axis is moving
+  * \param[in] iIdlePollPeriod    The time in ms between polls when no axis is moving
+  * \param[in] dTimeout           Communication timeout in ms
+  * \param[in] iNoResetAtBoot     if 0 or not set then controller is reset, if 1 then it's not
   */
-extern "C" int phytronCreatePhymotion(const char *phytronPortName, const char *asynPortName,
-                                      int movingPollPeriod, int idlePollPeriod, double timeout, int noResetAtBoot)
+int phytronController::phytronCreatePhymotion(const char* szPhytronPortName,
+    const char* szAsynPortName, int iMovingPollPeriod, int iIdlePollPeriod,
+    double dTimeout, int iNoResetAtBoot)
 {
-  new phytronController(phytronController::TYPE_PHYMOTION, phytronPortName, asynPortName, 0,
-                        movingPollPeriod/1000., idlePollPeriod/1000., timeout/1000., noResetAtBoot);
+  new phytronController(phytronController::TYPE_PHYMOTION, szPhytronPortName, szAsynPortName, 0,
+                        iMovingPollPeriod/1000., iIdlePollPeriod/1000., dTimeout/1000., iNoResetAtBoot);
   return asynSuccess;
 }
 
 /** Creates a new phytronController object for a Phytron MCC-1 or MCC-2.
   * Configuration command, called directly or from iocsh
-  * \param[in] portName          The name of the asyn port that will be created for this driver
-  * \param[in] phytronPortName   The name of the drvAsynIPPPort that was created previously to connect to the phytron controller
-  * \param[in] address           Serial address of contoller 0..15 (hardware selector)
-  * \param[in] movingPollPeriod  The time in ms between polls when any axis is moving
-  * \param[in] idlePollPeriod    The time in ms between polls when no axis is moving
-  * \param[in] timeout           Communication timeout in ms
-  * \param[in] noResetAtBoot     if 0 or not set then controller is reset, if 1 then it's not
+  * \param[in] szPhytronPortName  The name of the asyn port that will be created for this driver
+  * \param[in] szAsynPortName     The name of the drvAsynIPPPort that was created previously to connect to the phytron controller
+  * \param[in] iAddress           Serial address of contoller 0..15 (hardware selector)
+  * \param[in] iMovingPollPeriod  The time in ms between polls when any axis is moving
+  * \param[in] iIdlePollPeriod    The time in ms between polls when no axis is moving
+  * \param[in] dTimeout           Communication timeout in ms
+  * \param[in] iNoResetAtBoot     if 0 or not set then controller is reset, if 1 then it's not
   */
-extern "C" int phytronCreateMCC(const char *phytronPortName, const char *asynPortName, int address,
-                                int movingPollPeriod, int idlePollPeriod, double timeout, int noResetAtBoot)
+int phytronController::phytronCreateMCC(const char* szPhytronPortName,
+    const char* szAsynPortName, int iAddress, int iMovingPollPeriod,
+    int iIdlePollPeriod, double dTimeout, int iNoResetAtBoot)
 {
-  new phytronController(phytronController::TYPE_MCC, phytronPortName, asynPortName, address,
-                        movingPollPeriod/1000., idlePollPeriod/1000., timeout/1000., noResetAtBoot);
+  new phytronController(phytronController::TYPE_MCC, szPhytronPortName, szAsynPortName, iAddress,
+                        iMovingPollPeriod/1000., iIdlePollPeriod/1000., dTimeout/1000., iNoResetAtBoot);
   return asynSuccess;
 }
 
 /** asynUsers use this to read integer parameters
- * \param[in] pasynUser   asynUser structure containing the reason
- * \param[out] value      Parameter value
+ * \param[in]  pasynUser  asynUser structure containing the reason
+ * \param[out] piValue    Parameter value
  */
-asynStatus phytronController::readInt32(asynUser *pasynUser, epicsInt32 *value)
+asynStatus phytronController::readInt32(asynUser* pasynUser, epicsInt32* piValue)
 {
   phytronAxis   *pAxis;
   phytronStatus phyStatus;
@@ -250,7 +284,7 @@ asynStatus phytronController::readInt32(asynUser *pasynUser, epicsInt32 *value)
   int           iParameter(0);
 
   //Call base implementation first
-  asynMotorController::readInt32(pasynUser, value);
+  asynMotorController::readInt32(pasynUser, piValue);
 
   //Check if this is a call to read a controller parameter
   if(pasynUser->reason == resetController_ || pasynUser->reason == controllerStatusReset_){
@@ -260,7 +294,7 @@ asynStatus phytronController::readInt32(asynUser *pasynUser, epicsInt32 *value)
     phyStatus = sendPhytronCommand(std::string("ST"), sResponse);
     CHECK_CTRL("readInt32", "Reading controller status", return phyToAsyn(phyStatus));
 
-    *value = atoi(sResponse.c_str());
+    *piValue = atoi(sResponse.c_str());
     return asynSuccess;
   }
 
@@ -273,13 +307,13 @@ asynStatus phytronController::readInt32(asynUser *pasynUser, epicsInt32 *value)
   }
 
   if(pasynUser->reason == homingProcedure_){
-    getIntegerParam(pAxis->axisNo_, homingProcedure_, value);
+    getIntegerParam(pAxis->axisNo_, homingProcedure_, piValue);
     return asynSuccess;
   } else if (pasynUser->reason == axisReset_ || pasynUser->reason == axisStatusReset_){
     //Called only on initialization of AXIS-RESET and AXIS-STATUS-RESET bo records
     return asynSuccess;
   } else if (pasynUser->reason == axisDisableMotor_) {
-    *value = pAxis->disableMotor_ & 1;
+    *piValue = pAxis->disableMotor_ & 1;
     return asynSuccess;
   }
   else if (pasynUser->reason == axisMode_)             iParameter =  1;
@@ -308,27 +342,27 @@ asynStatus phytronController::readInt32(asynUser *pasynUser, epicsInt32 *value)
                                  sResponse);
   CHECK_AXIS("readInt32", "Reading parameter", pAxis, return phyToAsyn(phyStatus));
 
-  *value = atoi(sResponse.c_str());
+  *piValue = atoi(sResponse.c_str());
 
   //{STOP,RUN,BOOST} current records have EGU set to mA, but device returns 10mA
   if(pasynUser->reason == stopCurrent_ || pasynUser->reason == runCurrent_ ||
       pasynUser->reason == boostCurrent_)
-    *value *= 10;
+    *piValue *= 10;
 
   return asynSuccess;
 }
 
 /** asynUsers use this to write integer parameters
- * \param[in] pasynUser   asynUser structure containing the reason
- * \param[in] value       Parameter value to be written
+ * \param[in] pasynUser  asynUser structure containing the reason
+ * \param[in] iValue     Parameter value to be written
  */
-asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
+asynStatus phytronController::writeInt32(asynUser* pasynUser, epicsInt32 iValue)
 {
   phytronAxis   *pAxis;
   phytronStatus phyStatus(phytronSuccess);
 
   //Call base implementation first
-  asynMotorController::writeInt32(pasynUser, value);
+  asynMotorController::writeInt32(pasynUser, iValue);
   const char* szSetChar((iCtrlType_ == TYPE_PHYMOTION) ? "=" : "S");
 
   /*
@@ -356,7 +390,7 @@ asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
 
   this->outString_[0] = '\0';
   if(pasynUser->reason == homingProcedure_){
-    setIntegerParam(pAxis->axisNo_, pasynUser->reason, value);
+    setIntegerParam(pAxis->axisNo_, pasynUser->reason, iValue);
     callParamCallbacks();
     return asynSuccess;
   } else if(pasynUser->reason == axisReset_){
@@ -366,53 +400,53 @@ asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
       return asynError;
     sprintf(this->outString_, "SEC%s", &pAxis->axisModuleNo_[1]);
   } else if(pasynUser->reason == axisMode_){
-    sprintf(this->outString_, "%sP01%s%d", pAxis->axisModuleNo_, szSetChar,value);
+    sprintf(this->outString_, "%sP01%s%d", pAxis->axisModuleNo_, szSetChar,iValue);
   } else if(pasynUser->reason == mopOffsetPos_){
-    sprintf(this->outString_, "%sP11%s%d", pAxis->axisModuleNo_, szSetChar,value);
+    sprintf(this->outString_, "%sP11%s%d", pAxis->axisModuleNo_, szSetChar,iValue);
   } else if(pasynUser->reason == mopOffsetNeg_){
-    sprintf(this->outString_, "%sP12%s%d", pAxis->axisModuleNo_, szSetChar,value);
+    sprintf(this->outString_, "%sP12%s%d", pAxis->axisModuleNo_, szSetChar,iValue);
   } else if (pasynUser->reason == stepResolution_){
-    sprintf(this->outString_, "%sP45%s%d", pAxis->axisModuleNo_, szSetChar,value);
+    sprintf(this->outString_, "%sP45%s%d", pAxis->axisModuleNo_, szSetChar,iValue);
   }  else if (pasynUser->reason == stopCurrent_){
-    value /= 10; //STOP_CURRENT record has EGU mA, device expects 10mA
-    sprintf(this->outString_, "%sP40%s%d", pAxis->axisModuleNo_, szSetChar,value);
+    iValue /= 10; //STOP_CURRENT record has EGU mA, device expects 10mA
+    sprintf(this->outString_, "%sP40%s%d", pAxis->axisModuleNo_, szSetChar,iValue);
   } else if (pasynUser->reason == runCurrent_){
-    value /= 10; //RUN_CURRENT record has EGU mA, device expects 10mA
-    sprintf(this->outString_, "%sP41%s%d", pAxis->axisModuleNo_, szSetChar,value);
+    iValue /= 10; //RUN_CURRENT record has EGU mA, device expects 10mA
+    sprintf(this->outString_, "%sP41%s%d", pAxis->axisModuleNo_, szSetChar,iValue);
   } else if (pasynUser->reason == boostCurrent_){
-    value /= 10; //BOOST_CURRENT record has EGU mA, device expects 10mA
-    sprintf(this->outString_, "%sP42%s%d", pAxis->axisModuleNo_, szSetChar,value);
+    iValue /= 10; //BOOST_CURRENT record has EGU mA, device expects 10mA
+    sprintf(this->outString_, "%sP42%s%d", pAxis->axisModuleNo_, szSetChar,iValue);
   } else if (pasynUser->reason == encoderType_){
-    sprintf(this->outString_, "%sP34%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP34%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if (pasynUser->reason == initRecoveryTime_){
-    sprintf(this->outString_, "%sP13%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP13%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if (pasynUser->reason == positionRecoveryTime_){
-    sprintf(this->outString_, "%sP16%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP16%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if (pasynUser->reason == boost_){
-    sprintf(this->outString_, "%sP17%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP17%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if (pasynUser->reason == encoderRate_){
-    sprintf(this->outString_, "%sP26%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP26%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if (pasynUser->reason == switchTyp_){
-    sprintf(this->outString_, "%sP27%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP27%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if (pasynUser->reason == pwrStageMode_){
-    sprintf(this->outString_, "%sP28%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP28%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if (pasynUser->reason == encoderRes_){
-    sprintf(this->outString_, "%sP35%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP35%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if (pasynUser->reason == encoderFunc_){
     //Value is VAL field of parameter P37 record. If P37 is positive P36 is set to 1, else 0
-    sprintf(this->outString_, "%sP36%s%d", pAxis->axisModuleNo_, szSetChar, value > 0 ? 1 : 0);
+    sprintf(this->outString_, "%sP36%s%d", pAxis->axisModuleNo_, szSetChar, iValue > 0 ? 1 : 0);
   } else if(pasynUser->reason == encoderSFIWidth_){
-    sprintf(this->outString_, "%sP37%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP37%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if(pasynUser->reason == encoderSFIWidth_){
-    sprintf(this->outString_, "%sP38%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP38%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if(pasynUser->reason == powerStageMonitor_){
-    sprintf(this->outString_, "%sP53%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP53%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if(pasynUser->reason == currentDelayTime_){
-    sprintf(this->outString_, "%sP43%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP43%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if(pasynUser->reason == encoderDirection_){
-    sprintf(this->outString_, "%sP38%s%d", pAxis->axisModuleNo_, szSetChar, value);
+    sprintf(this->outString_, "%sP38%s%d", pAxis->axisModuleNo_, szSetChar, iValue);
   } else if(pasynUser->reason == axisDisableMotor_){
-    pAxis->disableMotor_ = (pAxis->disableMotor_ & (~1)) | ((value != 0) ? 1 : 0);
+    pAxis->disableMotor_ = (pAxis->disableMotor_ & (~1)) | ((iValue != 0) ? 1 : 0);
     pAxis->setBrakeOutput(NULL, pAxis->brakeReleased_);
     return asynSuccess;
   }
@@ -426,10 +460,10 @@ asynStatus phytronController::writeInt32(asynUser *pasynUser, epicsInt32 value)
 }
 
 /** asynUsers use this to read float parameters
- * \param[in] pasynUser   asynUser structure containing the reason
- * \param[out] value      Parameter value
+ * \param[in]  pasynUser  asynUser structure containing the reason
+ * \param[out] pdValue    Parameter value
  */
-asynStatus phytronController::readFloat64(asynUser *pasynUser, epicsFloat64 *value)
+asynStatus phytronController::readFloat64(asynUser *pasynUser, epicsFloat64 *pdValue)
 {
   phytronAxis   *pAxis;
   phytronStatus phyStatus(phytronSuccess);
@@ -443,7 +477,7 @@ asynStatus phytronController::readFloat64(asynUser *pasynUser, epicsFloat64 *val
   }
 
   //Call base implementation first
-  asynMotorController::readFloat64(pasynUser, value);
+  asynMotorController::readFloat64(pasynUser, pdValue);
 
   this->outString_[0] = '\0';
   if(pasynUser->reason == powerStageTemp_){
@@ -451,13 +485,13 @@ asynStatus phytronController::readFloat64(asynUser *pasynUser, epicsFloat64 *val
   } else if(pasynUser->reason == motorTemp_){
     sprintf(this->outString_, "%sP54R", pAxis->axisModuleNo_);
   } else if(pasynUser->reason == axisBrakeOutput_){
-    *value = pAxis->brakeOutput_;
+    *pdValue = pAxis->brakeOutput_;
     return asynSuccess;
   } else if(pasynUser->reason == axisBrakeEngageTime_){
-    *value = pAxis->brakeEngageTime_;
+    *pdValue = pAxis->brakeEngageTime_;
     return asynSuccess;
   } else if(pasynUser->reason == axisBrakeReleaseTime_){
-    *value = pAxis->brakeReleaseTime_;
+    *pdValue = pAxis->brakeReleaseTime_;
     return asynSuccess;
   }
 
@@ -466,17 +500,17 @@ asynStatus phytronController::readFloat64(asynUser *pasynUser, epicsFloat64 *val
     CHECK_AXIS("readFloat64", "Reading parameter", pAxis, return phyToAsyn(phyStatus));
 
     //Power stage and motor temperature records have EGU °C, but device returns 0.1 °C
-    *value = atof(sResponse.c_str()) / 10.;
+    *pdValue = atof(sResponse.c_str()) / 10.;
   }
 
   return asynSuccess;
 }
 
 /** asynUsers use this to write float parameters
- * \param[in] pasynUser   asynUser structure containing the reason
- * \param[in] value       Parameter value to be written
+ * \param[in] pasynUser  asynUser structure containing the reason
+ * \param[in] dValue     Parameter value to be written
  */
-asynStatus phytronController::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
+asynStatus phytronController::writeFloat64(asynUser* pasynUser, epicsFloat64 dValue)
 {
   phytronAxis* pAxis(getAxis(pasynUser));
   if(!pAxis){
@@ -486,35 +520,35 @@ asynStatus phytronController::writeFloat64(asynUser *pasynUser, epicsFloat64 val
   }
 
   if (pasynUser->reason == axisBrakeOutput_)
-    pAxis->brakeOutput_ = floor(10.0 * ((value > -100.0 && value < 100.) ? value : 0.0) + 0.5) / 10.0;
+    pAxis->brakeOutput_ = floor(10.0 * ((dValue > -100.0 && dValue < 100.) ? dValue : 0.0) + 0.5) / 10.0;
   else if (pasynUser->reason == axisBrakeEngageTime_) {
-    if (value > MAXIMUM_BRAKE_TIME)
-      value = MAXIMUM_BRAKE_TIME;
-    pAxis->brakeEngageTime_ = value > 0.0 ? value : 0.0;
+    if (dValue > MAXIMUM_BRAKE_TIME)
+      dValue = MAXIMUM_BRAKE_TIME;
+    pAxis->brakeEngageTime_ = dValue > 0.0 ? dValue : 0.0;
   } else if (pasynUser->reason == axisBrakeReleaseTime_) {
-    if (value > MAXIMUM_BRAKE_TIME)
-      value = MAXIMUM_BRAKE_TIME;
-    pAxis->brakeReleaseTime_ = value > 0.0 ? value : 0.0;
+    if (dValue > MAXIMUM_BRAKE_TIME)
+      dValue = MAXIMUM_BRAKE_TIME;
+    pAxis->brakeReleaseTime_ = dValue > 0.0 ? dValue : 0.0;
   }
 
   //Call base implementation
-  return asynMotorController::writeFloat64(pasynUser, value);
+  return asynMotorController::writeFloat64(pasynUser, dValue);
 }
 
 /** Called when asyn clients call pasynOption->read().
  * The base class implementation simply prints an error message.
  * Derived classes may reimplement this function if required.
- * \param[in]  pasynUser pasynUser structure that encodes the reason and address.
- * \param[in]  key       Option key string.
- * \param[out] value     string to be returned
- * \param[in]  maxChars  Size of value string
+ * \param[in]  pasynUser  pasynUser structure that encodes the reason and address.
+ * \param[in]  szKey      Option key string.
+ * \param[out] szValue    string to be returned
+ * \param[in]  iMaxChars  Size of value string
  * \return asyn status
  */
-asynStatus phytronController::readOption(asynUser *pasynUser, const char *key, char *value, int maxChars)
+asynStatus phytronController::readOption(asynUser* pasynUser, const char* szKey, char* szValue, int iMaxChars)
 {
-  if (key && value) {
-    *value = '\0';
-    if (epicsStrCaseCmp(key, "pollMethod") == 0) {
+  if (szKey && szValue) {
+    *szValue = '\0';
+    if (epicsStrCaseCmp(szKey, "pollMethod") == 0) {
       const char* szMethod;
       phytronAxis* pAxis(getAxis(pasynUser));
       enum pollMethod iMethod(pAxis ? pAxis->iPollMethod_ : iDefaultPollMethod_);
@@ -525,42 +559,42 @@ asynStatus phytronController::readOption(asynUser *pasynUser, const char *key, c
         case pollMethodControllerParallel: szMethod = "ctrl-parallel"; break;
         default:                           szMethod = "???";           break;
       }
-      snprintf(value, maxChars, "%d/%s", static_cast<int>(iMethod), szMethod);
+      snprintf(szValue, iMaxChars, "%d/%s", static_cast<int>(iMethod), szMethod);
       return asynSuccess;
     }
-    if (epicsStrCaseCmp(key, "fakeHomedEnable") == 0) {
-      snprintf(value, maxChars, "%s", fake_homed_enable_ ? "true" : "false");
+    if (epicsStrCaseCmp(szKey, "fakeHomedEnable") == 0) {
+      snprintf(szValue, iMaxChars, "%s", fake_homed_enable_ ? "true" : "false");
       return asynSuccess;
     }
-    if (epicsStrCaseCmp(key, "fakeHomedCache") == 0) {
+    if (epicsStrCaseCmp(szKey, "fakeHomedCache") == 0) {
       int iLen(0);
-      value[0] = '\0';
+      szValue[0] = '\0';
       for (int i = 0; i < ARRAY_SIZE(fake_homed_cache_); ++i) {
-        snprintf(&value[iLen], maxChars - iLen, "%s%u", i ? "," : "", fake_homed_cache_[i]);
-        value[maxChars - 1] = '\0';
-        iLen += strlen(&value[iLen]);
-        if ((iLen + 1) >= maxChars)
+        snprintf(&szValue[iLen], iMaxChars - iLen, "%s%u", i ? "," : "", fake_homed_cache_[i]);
+        szValue[iMaxChars - 1] = '\0';
+        iLen += strlen(&szValue[iLen]);
+        if ((iLen + 1) >= iMaxChars)
           break;
       }
       return asynSuccess;
     }
-    if (epicsStrCaseCmp(key, "allowExitOnError") == 0) {
-      snprintf(value, maxChars, "%s", allow_exit_on_error_ ? "true" : "false");
+    if (epicsStrCaseCmp(szKey, "allowExitOnError") == 0) {
+      snprintf(szValue, iMaxChars, "%s", allow_exit_on_error_ ? "true" : "false");
       return asynSuccess;
     }
   }
-  return asynMotorController::readOption(pasynUser, key, value, maxChars);
+  return asynMotorController::readOption(pasynUser, szKey, szValue, iMaxChars);
 }
 
 /** Called when asyn clients call pasynOption->write().
  * The base class implementation simply prints an error message.
  * Derived classes may reimplement this function if required.
- * \param[in] pasynUser pasynUser structure that encodes the reason and address.
- * \param[in] key Option key string.
- * \param[in] value Value string.
+ * \param[in] pasynUser  pasynUser structure that encodes the reason and address.
+ * \param[in] szKey      Option key string.
+ * \param[in] szValue    Value string.
  * \return asyn status
  */
-asynStatus phytronController::writeOption(asynUser *pasynUser, const char *key, const char *value)
+asynStatus phytronController::writeOption(asynUser* pasynUser, const char* szKey, const char* szValue)
 {
   phytronAxis* pAxis(NULL);
   enum pollMethod iMethod(pollMethodSerial);
@@ -568,55 +602,55 @@ asynStatus phytronController::writeOption(asynUser *pasynUser, const char *key, 
   int iAxisNo(0);
   size_t iLen;
 
-  if (!key || !value)
+  if (!szKey || !szValue)
     goto finish;
-  if (epicsStrCaseCmp(key, "pollMethod") == 0) {
+  if (epicsStrCaseCmp(szKey, "pollMethod") == 0) {
     // polling methods: serial, axis-parallel or controller-parallel; axis may have "default"
-    if (iCtrlType_ != TYPE_PHYMOTION)
-    {
-      epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
-                    "phytronController:writeOption(%s, %s) pollMethod not allowed for this controller", key, value);
-      return asynError;
-    }
     getAddress(pasynUser, &iAxisNo);
     if (iAxisNo > 0) {
       pAxis = getAxis(iAxisNo);
       if (!pAxis) {
         epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
-                      "phytronController:writeOption(%s, %s) wrong axis", key, value);
+                      "phytronController:writeOption(%s, %s) wrong axis", szKey, szValue);
         return asynError;
       }
       iMethod = pollMethodDefault;
     }
-    if (epicsParseInt64(value, &iTmp, 0, NULL) == 0) {
+    if (epicsParseInt64(szValue, &iTmp, 0, NULL) == 0) {
       if (iTmp < (pAxis ? static_cast<epicsInt64>(pollMethodDefault) : static_cast<epicsInt64>(pollMethodSerial)) ||
           iTmp > static_cast<epicsInt64>(pollMethodControllerParallel))
         goto wrongValue;
       iMethod = static_cast<pollMethod>(iTmp);
     } else {
-      while (isspace(*value)) ++value;
-      iLen = strlen(value);
-      while (iLen > 0 && isspace(value[iLen - 1])) --iLen;
+      while (isspace(*szValue)) ++szValue;
+      iLen = strlen(szValue);
+      while (iLen > 0 && isspace(szValue[iLen - 1])) --iLen;
 
-      if (pAxis && ((iLen ==  7 && !epicsStrnCaseCmp(value, "default", 7)) ||
-                    (iLen ==  8 && !epicsStrnCaseCmp(value, "standard", 8)) ||
-                    (iLen == 10 && !epicsStrnCaseCmp(value, "controller", 10))))
+      if (pAxis && ((iLen ==  7 && !epicsStrnCaseCmp(szValue, "default", 7)) ||
+                    (iLen ==  8 && !epicsStrnCaseCmp(szValue, "standard", 8)) ||
+                    (iLen == 10 && !epicsStrnCaseCmp(szValue, "controller", 10))))
         iMethod = pollMethodDefault;
-      else if ((iLen ==  6 && !epicsStrnCaseCmp(value, "serial", 6)) ||
-               (iLen == 11 && !epicsStrnCaseCmp(value, "no-parallel", 11)) ||
-               (iLen == 12 && !epicsStrnCaseCmp(value, "not-parallel", 12)) ||
-               (iLen ==  3 && !epicsStrnCaseCmp(value, "old", 3)))
+      else if ((iLen ==  6 && !epicsStrnCaseCmp(szValue, "serial", 6)) ||
+               (iLen == 11 && !epicsStrnCaseCmp(szValue, "no-parallel", 11)) ||
+               (iLen == 12 && !epicsStrnCaseCmp(szValue, "not-parallel", 12)) ||
+               (iLen ==  3 && !epicsStrnCaseCmp(szValue, "old", 3)))
         iMethod = pollMethodSerial;
-      else if ((iLen ==  4 && !epicsStrnCaseCmp(value, "axis", 4)) ||
-               (iLen == 13 && !epicsStrnCaseCmp(value, "axis-parallel", 13)))
+      else if ((iLen ==  4 && !epicsStrnCaseCmp(szValue, "axis", 4)) ||
+               (iLen == 13 && !epicsStrnCaseCmp(szValue, "axis-parallel", 13)))
         iMethod = pollMethodAxisParallel;
-      else if ((iLen ==  4 && !epicsStrnCaseCmp(value, "ctrl", 4)) ||
-               (iLen ==  8 && !epicsStrnCaseCmp(value, "parallel", 8)) ||
-               (iLen == 13 && !epicsStrnCaseCmp(value, "ctrl-parallel", 13)) ||
-               (iLen == 19 && !epicsStrnCaseCmp(value, "controller-parallel", 19)))
+      else if ((iLen ==  4 && !epicsStrnCaseCmp(szValue, "ctrl", 4)) ||
+               (iLen ==  8 && !epicsStrnCaseCmp(szValue, "parallel", 8)) ||
+               (iLen == 13 && !epicsStrnCaseCmp(szValue, "ctrl-parallel", 13)) ||
+               (iLen == 19 && !epicsStrnCaseCmp(szValue, "controller-parallel", 19)))
         iMethod = pollMethodControllerParallel;
       else
         goto wrongValue;
+    }
+    if (iCtrlType_ != TYPE_PHYMOTION && iMethod != pollMethodDefault && iMethod != pollMethodSerial)
+    {
+      epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
+                    "phytronController:writeOption(%s, %s) pollMethod not allowed for this controller", szKey, szValue);
+      return asynError;
     }
     if (pAxis)
       pAxis->iPollMethod_ = iMethod;
@@ -625,37 +659,37 @@ asynStatus phytronController::writeOption(asynUser *pasynUser, const char *key, 
     return asynSuccess;
   }
 
-  if (epicsStrCaseCmp(key, "fakeHomedEnable") == 0) {
-    if (epicsParseInt64(value, &iTmp, 0, NULL) == 0)
+  if (epicsStrCaseCmp(szKey, "fakeHomedEnable") == 0) {
+    if (epicsParseInt64(szValue, &iTmp, 0, NULL) == 0)
       fake_homed_enable_ = (iTmp != 0);
-    else if (epicsStrCaseCmp(value, "t") == 0 || epicsStrCaseCmp(value, "true") == 0 ||
-             epicsStrCaseCmp(value, "y") == 0 || epicsStrCaseCmp(value, "yes") == 0 ||
-             epicsStrCaseCmp(value, "on") == 0)
+    else if (epicsStrCaseCmp(szValue, "t") == 0 || epicsStrCaseCmp(szValue, "true") == 0 ||
+             epicsStrCaseCmp(szValue, "y") == 0 || epicsStrCaseCmp(szValue, "yes") == 0 ||
+             epicsStrCaseCmp(szValue, "on") == 0)
     {
       const char* szSetChar((iCtrlType_ == TYPE_PHYMOTION) ? "=" : "S");
       if (sendPhytronCommand(std::string("R1001") + szSetChar + std::to_string(fake_homed_cache_[0])) != phytronSuccess)
         return asynError;
       fake_homed_enable_ = true;
     }
-    else if (epicsStrCaseCmp(value, "f") == 0 || epicsStrCaseCmp(value, "false") == 0 ||
-             epicsStrCaseCmp(value, "n") == 0 || epicsStrCaseCmp(value, "no") == 0 ||
-             epicsStrCaseCmp(value, "off") == 0)
+    else if (epicsStrCaseCmp(szValue, "f") == 0 || epicsStrCaseCmp(szValue, "false") == 0 ||
+             epicsStrCaseCmp(szValue, "n") == 0 || epicsStrCaseCmp(szValue, "no") == 0 ||
+             epicsStrCaseCmp(szValue, "off") == 0)
       fake_homed_enable_ = false;
     else
       goto wrongValue;
     return asynSuccess;
   }
 
-  if (epicsStrCaseCmp(key, "allowExitOnError") == 0) {
-    if (epicsParseInt64(value, &iTmp, 0, NULL) == 0)
+  if (epicsStrCaseCmp(szKey, "allowExitOnError") == 0) {
+    if (epicsParseInt64(szValue, &iTmp, 0, NULL) == 0)
       allow_exit_on_error_ = (iTmp != 0);
-    else if (epicsStrCaseCmp(value, "t") == 0 || epicsStrCaseCmp(value, "true") == 0 ||
-             epicsStrCaseCmp(value, "y") == 0 || epicsStrCaseCmp(value, "yes") == 0 ||
-             epicsStrCaseCmp(value, "on") == 0)
+    else if (epicsStrCaseCmp(szValue, "t") == 0 || epicsStrCaseCmp(szValue, "true") == 0 ||
+             epicsStrCaseCmp(szValue, "y") == 0 || epicsStrCaseCmp(szValue, "yes") == 0 ||
+             epicsStrCaseCmp(szValue, "on") == 0)
       allow_exit_on_error_ = true;
-    else if (epicsStrCaseCmp(value, "f") == 0 || epicsStrCaseCmp(value, "false") == 0 ||
-             epicsStrCaseCmp(value, "n") == 0 || epicsStrCaseCmp(value, "no") == 0 ||
-             epicsStrCaseCmp(value, "off") == 0)
+    else if (epicsStrCaseCmp(szValue, "f") == 0 || epicsStrCaseCmp(szValue, "false") == 0 ||
+             epicsStrCaseCmp(szValue, "n") == 0 || epicsStrCaseCmp(szValue, "no") == 0 ||
+             epicsStrCaseCmp(szValue, "off") == 0)
       allow_exit_on_error_ = false;
     else
       goto wrongValue;
@@ -663,25 +697,25 @@ asynStatus phytronController::writeOption(asynUser *pasynUser, const char *key, 
   }
 
 finish:
-  return asynMotorController::writeOption(pasynUser, key, value);
+  return asynMotorController::writeOption(pasynUser, szKey, szValue);
 
 wrongValue:
   epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
                 "phytronController:writeOption(%s, %s) wrong value - allowed are %sserial,axis-parallel,%sparallel",
-                key, value, pAxis ? "default," : "", pAxis ? "controller-" : "");
+                szKey, szValue, pAxis ? "default," : "", pAxis ? "controller-" : "");
   return asynError;
 }
 
-/*
+/**
  * Reset the motorEncoderRatio to 1 after the reset of MCM unit
  */
 void phytronController::resetAxisEncoderRatio()
 {
-  for(uint32_t i = 0; i < axes.size(); i++){
-    setDoubleParam(axes[i]->axisNo_, motorEncoderRatio_, 1);
+  for(uint32_t i = 0; i < axes_.size(); i++){
+    setDoubleParam(axes_[i]->axisNo_, motorEncoderRatio_, 1);
   }
+  callParamCallbacks();
 }
-
 
 /** Reports on status of the driver
   * \param[in] fp The file pointer on which report information will be written
@@ -754,7 +788,7 @@ asynStatus phytronController::poll()
     switch (iCtrlType_)
     {
       case TYPE_PHYMOTION:
-        for (std::vector<phytronAxis*>::iterator it = axes.begin(); it != axes.end(); ++it) {
+        for (std::vector<phytronAxis*>::iterator it = axes_.begin(); it != axes_.end(); ++it) {
           phytronAxis* pAxis(*it);
           if (!pAxis) continue;
           pollMethod iPollMethod(pAxis->iPollMethod_);
@@ -768,12 +802,14 @@ asynStatus phytronController::poll()
         }
         break;
       case TYPE_MCC:
-        sLastSUI.clear();
+        sLastSUI_.clear();
         asCommands.push_back(std::string("SUI"));
         break;
       default:
         return asynError;
     }
+    for (std::vector<phytronIO*>::iterator it = IOs_.begin(); it != IOs_.end(); ++it)
+      (*it)->pollIO(asCommands, true);
     if (!asCommands.empty())
     {
       // communicate
@@ -811,14 +847,14 @@ asynStatus phytronController::poll()
         {
           if (!asResponses.empty())
           {
-            sLastSUI = asResponses.front();
+            sLastSUI_ = asResponses.front();
             asResponses.erase(asResponses.begin());
-            if (sLastSUI.empty())
+            if (sLastSUI_.empty())
               iResult = asynError;
-            else if (sLastSUI.front() != '\x06')
+            else if (sLastSUI_.front() != '\x06')
               iResult = asynError;
             else
-              sLastSUI.erase(0, 1);
+              sLastSUI_.erase(0, 1);
           }
           else
             iResult = asynError;
@@ -827,11 +863,14 @@ asynStatus phytronController::poll()
           for (std::vector<phytronAxis*>::iterator it = apTodoAxis.begin(); it != apTodoAxis.end(); ++it)
             if (!(*it)->parseAnswer(asResponses))
               iResult = asynError;
+        for (std::vector<phytronIO*>::iterator it = IOs_.begin(); it != IOs_.end(); ++it)
+          if (!(*it)->pollIO(asResponses, false))
+            iResult = asynError;
         if (!asResponses.empty())
           iResult = asynError;
       }
       else if (!apTodoAxis.empty())
-        for (std::vector<phytronAxis*>::iterator it = axes.begin(); it != axes.end(); ++it)
+        for (std::vector<phytronAxis*>::iterator it = axes_.begin(); it != axes_.end(); ++it)
         {
           (*it)->setIntegerParam(motorStatusProblem_, 1); // set problem bit
           (*it)->callParamCallbacks();
@@ -857,8 +896,8 @@ void phytronController::epicsInithookFunction(initHookState iState)
     return;
 
   // before motorRecord init_record pass 1
-  for (vector<phytronController*>::iterator itC = controllers.begin();
-       itC != controllers.end(); ++itC) {
+  for (vector<phytronController*>::iterator itC = controllers_.begin();
+       itC != controllers_.end(); ++itC) {
     // iterate over all controllers
     phytronController* pC(*itC);
     while (pC) {
@@ -958,7 +997,7 @@ phytronStatus phytronController::sendPhytronCommand(std::string sCommand, std::s
           sResponse.erase(0, 1);
         return phytronSuccess;
       case '\x15': // NAK
-        if (bACKonly)
+        if (!bACKonly)
           return phytronSuccess;
         break;
       default:
@@ -1064,11 +1103,25 @@ phytronStatus phytronController::sendPhytronMultiCommand(std::vector<std::string
 
 /** Castst phytronStatus to asynStatus enumeration
  * \param[in] phyStatus
+ * \return asynStatus
  */
 asynStatus phytronController::phyToAsyn(phytronStatus phyStatus)
 {
   if(phyStatus == phytronInvalidReturn || phyStatus == phytronInvalidCommand) return asynError;
   return (asynStatus) phyStatus;
+}
+
+/**
+ * Converts non-printable characters to C-escape notation
+ * \param[in] sIn  text to convert
+ * \return converted printable text
+ */
+std::string phytronController::escapeC(std::string sIn)
+{
+  std::string sOut;
+  sOut.resize(4 * sIn.size() + 10);
+  sOut.resize(epicsStrnEscapedFromRaw(&sOut[0], sOut.size(), sIn.c_str(), sIn.size()));
+  return sOut;
 }
 
 
@@ -1078,35 +1131,35 @@ asynStatus phytronController::phyToAsyn(phytronStatus phyStatus)
 
 /** Creates a new phytronAxis object.
   * Configuration command, called directly or from iocsh
-  * \param[in] controllerName    Name of the asyn port created by calling phytronCreatePhymotion or phytronCreateMCC from st.cmd
-  * \param[in] module            Index of the I1AM01 module controlling this axis
-  * \param[in] axis              Axis index
+  * \param[in] szControllerName   Name of the asyn port created by calling phytronCreatePhymotion or phytronCreateMCC from st.cmd
+  * \param[in] iModule            Index of the I1AM01 module controlling this axis
+  * \param[in] iAxis              Axis index
   */
-extern "C" int phytronCreateAxis(const char* controllerName, int module, int axis)
+int phytronAxis::phytronCreateAxis(const char* szControllerName, int iModule, int iAxis)
 {
   phytronAxis *pAxis;
   uint32_t i;
 
-  if (axis <= 0) {
+  if (iAxis <= 0) {
     printf("ERROR: invalid axis specified\n");
     return asynError;
   }
 
   //Find the controller
-  for(i = 0; i < controllers.size(); i++){
-    phytronController* pC(controllers[i]);
-    if(!strcmp(pC->controllerName_, controllerName)) {
+  for(i = 0; i < phytronController::controllers_.size(); i++){
+    phytronController* pC(phytronController::controllers_[i]);
+    if(!strcmp(pC->controllerName_, szControllerName)) {
       pC->lock();
-      pAxis = new phytronAxis(pC, module*10 + axis);
-      pC->axes.push_back(pAxis);
+      pAxis = new phytronAxis(pC, iModule*10 + iAxis);
+      pC->axes_.push_back(pAxis);
       pC->unlock();
       break;
     }
   }
 
   //If controller is not found, report error
-  if(i == controllers.size()){
-    printf("ERROR: phytronCreateAxis: Controller %s is not registered\n", controllerName);
+  if(i == phytronController::controllers_.size()){
+    printf("ERROR: phytronCreateAxis: Controller %s is not registered\n", szControllerName);
     return asynError;
   }
 
@@ -1121,14 +1174,14 @@ extern "C" int phytronCreateAxis(const char* controllerName, int module, int axi
  * \param[in] dEngageTime         time to engage brake (disable motor after this time in milliseconds, max. 10 sec)
  * \param[in] dReleaseTime        time to release brake (start move after this time in milliseconds, max. 10 sec)
  */
-extern "C" int phytronBrakeOutput(const char* szControllerName, float fAxis, float fOutput, int bDisableMotor, double dEngageTime, double dReleaseTime)
+int phytronAxis::phytronBrakeOutput(const char* szControllerName, float fAxis, float fOutput, int bDisableMotor, double dEngageTime, double dReleaseTime)
 {
   char szAxisNo[5];
   uint32_t i, j;
   if (!szControllerName || !*szControllerName)
     goto failed;
-  for (i = 0; i < controllers.size(); ++i) {
-    phytronController* pC(controllers[i]);
+  for (i = 0; i < phytronController::controllers_.size(); ++i) {
+    phytronController* pC(phytronController::controllers_[i]);
     if (!pC || strcmp(pC->controllerName_, szControllerName) != 0)
       continue;
     // found controller, search axis
@@ -1139,19 +1192,18 @@ extern "C" int phytronBrakeOutput(const char* szControllerName, float fAxis, flo
         break;
       case phytronController::TYPE_MCC:
       {
-        const char acNames[] = "XYZWABCD";
         int iAxis(static_cast<int>(floor(10. * fAxis + .5)));
         if (iAxis < 1  || iAxis > 8)
           continue;
-        epicsSnprintf(szAxisNo, sizeof(szAxisNo), "%c", acNames[iAxis - 1]);
+        epicsSnprintf(szAxisNo, sizeof(szAxisNo), "%d", iAxis);
         break;
       }
       default:
         continue;
     }
     szAxisNo[sizeof(szAxisNo) - 1] = '\0';
-    for (j = 0; j < pC->axes.size(); ++j) {
-      phytronAxis* pA(pC->axes[j]);
+    for (j = 0; j < pC->axes_.size(); ++j) {
+      phytronAxis* pA(pC->axes_[j]);
       if (!pA || strcmp(pA->axisModuleNo_, szAxisNo) != 0)
         continue;
 
@@ -1169,18 +1221,18 @@ failed:
 
 /** Creates a new phytronAxis object.
   * \param[in] pC Pointer to the phytronController to which this axis belongs.
-  * \param[in] axisNo Index number of this axis, range 0 to pC->numAxes_-1.
+  * \param[in] iAxisNo Index number of this axis, range 0 to pC->numAxes_-1.
   *
   * Initializes register numbers, etc.
   */
-phytronAxis::phytronAxis(phytronController *pC, int axisNo)
-  : asynMotorAxis(pC, axisNo)
+phytronAxis::phytronAxis(phytronController *pC, int iAxisNo)
+  : asynMotorAxis(pC, iAxisNo)
   , brakeOutput_(0.0)
   , disableMotor_(0)
   , brakeEngageTime_(0.0)
   , brakeReleaseTime_(0.0)
   , pC_(pC)
-  , lastStatus(phytronSuccess)
+  , lastStatus_(phytronSuccess)
   , brakeReleased_(0)
   , iPollMethod_(pollMethodDefault)
   , homeState_(0)
@@ -1192,14 +1244,13 @@ phytronAxis::phytronAxis(phytronController *pC, int axisNo)
   switch (pC_->iCtrlType_)
   {
     case phytronController::TYPE_PHYMOTION:
-      epicsSnprintf(axisModuleNo_, sizeof(axisModuleNo_), "M%.1f", axisNo / 10.);
+      epicsSnprintf(axisModuleNo_, sizeof(axisModuleNo_), "M%.1f", iAxisNo / 10.);
       break;
     case phytronController::TYPE_MCC:
     {
-      const char acNames[] = "XYZWABCD";
-      axisNo %= 10;
-      if (axisNo >= 1 && axisNo <= 8)
-        epicsSnprintf(axisModuleNo_, sizeof(axisModuleNo_), "%c", acNames[axisNo - 1]);
+      iAxisNo %= 10;
+      if (iAxisNo >= 1 && iAxisNo <= 8)
+        epicsSnprintf(axisModuleNo_, sizeof(axisModuleNo_), "%d", iAxisNo);
       break;
     }
   }
@@ -1594,6 +1645,7 @@ asynStatus phytronAxis::setEncoderRatio(double ratio)
   CHECK_AXIS("setEncoderRatio", "Setting ratio", this, return pC_->phyToAsyn(phyStatus));
 
   setDoubleParam(pC_->motorEncoderPosition_, encoderPosition * ratio);
+  callParamCallbacks();
   return asynSuccess;
 }
 
@@ -1675,7 +1727,7 @@ asynStatus phytronAxis::poll(bool *moving)
       else
         setIntegerParam(pC_->motorStatusProblem_, 1); // set problem bit
       CHECK_AXIS("poll", "Reading axis", this, setIntegerParam(pC_->motorStatusProblem_, 1); \
-        callParamCallbacks(); pC_->phyToAsyn(phyStatus));
+        callParamCallbacks());
       break;
     default:
       break;
@@ -1775,19 +1827,19 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
       iRemoveCount = 4;
       switch (axisModuleNo_[0])
       {
-        case 'X': case 'x': iAxis = 0; break;
-        case 'Y': case 'y': iAxis = 1; break;
-        case 'Z': case 'z': iAxis = 2; break;
-        case 'W': case 'w': iAxis = 3; break;
-        case 'A': case 'a': iAxis = 4; break;
-        case 'B': case 'b': iAxis = 5; break;
-        case 'C': case 'c': iAxis = 6; break;
-        case 'D': case 'd': iAxis = 7; break;
+        case 'X': case 'x': case '1': iAxis = 0; break;
+        case 'Y': case 'y': case '2': iAxis = 1; break;
+        case 'Z': case 'z': case '3': iAxis = 2; break;
+        case 'W': case 'w': case '4': iAxis = 3; break;
+        case 'A': case 'a': case '5': iAxis = 4; break;
+        case 'B': case 'b': case '6': iAxis = 5; break;
+        case 'C': case 'c': case '7': iAxis = 6; break;
+        case 'D': case 'd': case '8': iAxis = 7; break;
         default: goto finish;
       }
-      if (pC_->sLastSUI.size() > static_cast<size_t>(iAxis + 2) && pC_->sLastSUI[0] == 'I' && pC_->sLastSUI[1] == '=')
+      if (pC_->sLastSUI_.size() > static_cast<size_t>(iAxis + 2) && pC_->sLastSUI_[0] == 'I' && pC_->sLastSUI_[1] == '=')
       {
-        switch (pC_->sLastSUI[2 + iAxis])
+        switch (pC_->sLastSUI_[2 + iAxis])
         {
           case '0': iAxisStatus = 0x00; break; // no limit switch
           case '2': iAxisStatus = 0x30; break; // both limit switches
@@ -1901,94 +1953,4 @@ finish:
   callParamCallbacks();
   asValues.erase(asValues.begin(), asValues.begin() + iRemoveCount);
   return bResult;
-}
-
-/** Parameters for iocsh Phytron axis registration*/
-static const iocshArg phytronCreateAxisArg0 = {"Controller Name", iocshArgString};
-static const iocshArg phytronCreateAxisArg1 = {"Module index", iocshArgInt};
-static const iocshArg phytronCreateAxisArg2 = {"Axis index", iocshArgInt};
-static const iocshArg* const phytronCreateAxisArgs[] = {&phytronCreateAxisArg0,
-                                                        &phytronCreateAxisArg1,
-                                                        &phytronCreateAxisArg2};
-
-/** Parameters for iocsh Phytron phyMOTION controller registration */
-static const iocshArg phytronCreatePhymotionArg0 = {"Port name", iocshArgString};
-static const iocshArg phytronCreatePhymotionArg1 = {"PhytronAxis port name", iocshArgString};
-static const iocshArg phytronCreatePhymotionArg2 = {"Moving poll period (ms)", iocshArgInt};
-static const iocshArg phytronCreatePhymotionArg3 = {"Idle poll period (ms)", iocshArgInt};
-static const iocshArg phytronCreatePhymotionArg4 = {"Timeout (ms)", iocshArgDouble};
-static const iocshArg phytronCreatePhymotionArg5 = {"Do not restart controller with IOC", iocshArgInt};
-static const iocshArg * const phytronCreatePhymotionArgs[] = {&phytronCreatePhymotionArg0,
-                                                              &phytronCreatePhymotionArg1,
-                                                              &phytronCreatePhymotionArg2,
-                                                              &phytronCreatePhymotionArg3,
-                                                              &phytronCreatePhymotionArg4,
-                                                              &phytronCreatePhymotionArg5};
-
-/** Parameters for iocsh Phytron MCC controller registration */
-static const iocshArg phytronCreateMCCArg0 = {"Port name", iocshArgString};
-static const iocshArg phytronCreateMCCArg1 = {"PhytronAxis port name", iocshArgString};
-static const iocshArg phytronCreateMCCArg2 = {"Controller address (0..15)", iocshArgInt};
-static const iocshArg phytronCreateMCCArg3 = {"Moving poll period (ms)", iocshArgInt};
-static const iocshArg phytronCreateMCCArg4 = {"Idle poll period (ms)", iocshArgInt};
-static const iocshArg phytronCreateMCCArg5 = {"Timeout (ms)", iocshArgDouble};
-static const iocshArg phytronCreateMCCArg6 = {"Do not restart controller with IOC", iocshArgInt};
-static const iocshArg * const phytronCreateMCCArgs[] = {&phytronCreateMCCArg0,
-                                                        &phytronCreateMCCArg1,
-                                                        &phytronCreateMCCArg2,
-                                                        &phytronCreateMCCArg3,
-                                                        &phytronCreateMCCArg4,
-                                                        &phytronCreateMCCArg5,
-                                                        &phytronCreateMCCArg6};
-
-
-/** Parameters for iocsh Phytron brake(s) output registration */
-static const iocshArg phytronBrakeOutputArg0 = {"Controller Name", iocshArgString};
-static const iocshArg phytronBrakeOutputArg1 = {"Axis index", iocshArgDouble};
-static const iocshArg phytronBrakeOutputArg2 = {"Output index", iocshArgDouble};
-static const iocshArg phytronBrakeOutputArg3 = {"Motor disable flag", iocshArgInt};
-static const iocshArg phytronBrakeOutputArg4 = {"Brake engage wait time (ms)", iocshArgDouble};
-static const iocshArg phytronBrakeOutputArg5 = {"Brake release wait time (ms)", iocshArgDouble};
-static const iocshArg* const phytronBrakeOutputArgs[] = {&phytronBrakeOutputArg0,
-                                                         &phytronBrakeOutputArg1,
-                                                         &phytronBrakeOutputArg2,
-                                                         &phytronBrakeOutputArg3,
-                                                         &phytronBrakeOutputArg4,
-                                                         &phytronBrakeOutputArg5};
-
-static const iocshFuncDef phytronCreateAxisDef = {"phytronCreateAxis", 3, phytronCreateAxisArgs};
-static const iocshFuncDef phytronCreatePhymotionDef = {"phytronCreateController", 6, phytronCreatePhymotionArgs};
-static const iocshFuncDef phytronCreateMCCDef = {"phytronCreateMCC", 7, phytronCreateMCCArgs};
-static const iocshFuncDef phytronBrakeOutputDef = {"phytronBrakeOutput", 6, phytronBrakeOutputArgs};
-
-static void phytronCreatePhymotionCallFunc(const iocshArgBuf *args)
-{
-  phytronCreatePhymotion(args[0].sval, args[1].sval, args[2].ival, args[3].ival, args[4].dval,args[5].ival);
-}
-
-static void phytronCreateMCCCallFunc(const iocshArgBuf *args)
-{
-  phytronCreateMCC(args[0].sval, args[1].sval, args[2].ival, args[3].ival, args[4].ival, args[5].dval, args[6].ival);
-}
-
-static void phytronCreateAxisCallFunc(const iocshArgBuf *args)
-{
-  phytronCreateAxis(args[0].sval, args[1].ival, args[2].ival);
-}
-
-static void phytronBrakeOutputCallFunc(const iocshArgBuf *args)
-{
-  phytronBrakeOutput(args[0].sval, args[1].dval, args[2].dval, args[3].ival, args[4].dval, args[5].dval);
-}
-
-static void phytronRegister(void)
-{
-  iocshRegister(&phytronCreatePhymotionDef, phytronCreatePhymotionCallFunc);
-  iocshRegister(&phytronCreateMCCDef, phytronCreateMCCCallFunc);
-  iocshRegister(&phytronCreateAxisDef, phytronCreateAxisCallFunc);
-  iocshRegister(&phytronBrakeOutputDef, phytronBrakeOutputCallFunc);
-}
-
-extern "C" {
-epicsExportRegistrar(phytronRegister);
 }

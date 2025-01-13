@@ -1,4 +1,5 @@
 #!../../bin/linux-x86_64/phytron
+# SPDX-License-Identifier: EPICS
 
 < envPaths
 
@@ -25,6 +26,15 @@ asynSetOption("phyMotionPort", 0, "fakeHomedEnable", "true")
 phytronCreateAxis("phyMotionPort", 1, 1)
 phytronCreateAxis("phyMotionPort", 2, 1)
 phytronCreateAxis("phyMotionPort", 3, 1)
+
+# create analog I/O with a AIOM01.1
+phytronCreateAnalog("phyA1", "phyMotionPort", 1, 1, "")
+phytronCreateAnalog("phyA2", "phyMotionPort", 1, 2, "")
+phytronCreateAnalog("phyA3", "phyMotionPort", 1, 3, "")
+phytronCreateAnalog("phyA4", "phyMotionPort", 1, 4, "")
+
+# create digital I/O with a DIOM01.1
+phytronCreateDigital("phyD1", "phyMotionPort", 1, 1, "")
 
 dbLoadTemplate "motor.substitutions.phytron"
 

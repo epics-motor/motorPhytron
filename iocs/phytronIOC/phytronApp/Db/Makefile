@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: EPICS
 TOP=../..
 include $(TOP)/configure/CONFIG
 #----------------------------------------
@@ -11,10 +12,18 @@ ifdef MOTOR_PHYTRON
 DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_I1AM01.db
 DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_MCM01.db
 DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_motor.db
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_AIO.db
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_AIO_MCC.db
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_CMD.db
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_DIO.db
 else
 DB_INSTALLS += $(MOTOR)/db/Phytron_I1AM01.db
 DB_INSTALLS += $(MOTOR)/db/Phytron_MCM01.db
 DB_INSTALLS += $(MOTOR)/db/Phytron_motor.db
+DB_INSTALLS += $(MOTOR)/db/Phytron_AIO.db
+DB_INSTALLS += $(MOTOR)/db/Phytron_AIO_MCC.db
+DB_INSTALLS += $(MOTOR)/db/Phytron_CMD.db
+DB_INSTALLS += $(MOTOR)/db/Phytron_DIO.db
 endif
 
 #----------------------------------------------------

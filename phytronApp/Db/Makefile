@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: EPICS
 TOP=../..
 include $(TOP)/configure/CONFIG
 #----------------------------------------
@@ -14,6 +15,10 @@ include $(TOP)/configure/CONFIG
 DB += Phytron_I1AM01.db
 DB += Phytron_MCM01.db
 DB += Phytron_motor.db
+DB += Phytron_AIO.db
+DB += Phytron_AIO_MCC.db
+DB += Phytron_CMD.db
+DB += Phytron_DIO.db
 
 #----------------------------------------------------
 # If <anyname>.db template is not named <anyname>*.template add
