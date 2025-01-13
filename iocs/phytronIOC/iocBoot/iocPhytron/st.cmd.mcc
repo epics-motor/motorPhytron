@@ -36,12 +36,6 @@ drvAsynIPServerPortConfigure("testRemote2","127.0.0.2:22222",10,0,0,0)
 #drvAsynIPServerPortConfigure("testRemote2","0.0.0.0:22222",10,0,0,0)
 #drvAsynIPServerPortConfigure("testRemote2","192.168.167.254:22222",10,0,0,0)
 
-# connect both together with TCP forwarder
-#forwardAsyn(asynPortServer, asynPortClient, forwardingMode, readtmo, writetmo)**
-#  timeout in ms (-1 to disable)
-#  forwardingMode: 0=text/CRLF, 1=text/CR, 2=text/LF, 3=dumb/no-EOL, 4=phyMotion, 5=Modbus/RTU, 6=Modbus/ASCII, 7=Modbus/TCP
-forwardAsyn("testRemote2", "testRemote", 4, -1, 1000)
-
 # create analog and digital I/O for MCC-2
 phytronCreateAnalog("phyA1", "phyMotionPort", 1, 1, "")
 phytronCreateAnalog("phyA2", "phyMotionPort", 1, 2, "")
