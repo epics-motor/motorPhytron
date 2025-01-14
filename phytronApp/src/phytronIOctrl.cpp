@@ -22,17 +22,19 @@ Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2025
 struct phytronIOparam
 {
   bool          bWriteable;  ///< read only parameter cannot be written
+  bool          bMCC1only;   ///< parameter for MCC-1 only
   asynParamType iAsynType;   ///< asyn type of parameter type
   const char*   szAsynName;  ///< asyn parameter name
 };
 
 static struct phytronIOparam g_aParameters[] =
 {
-  { false, asynParamInt32, "IN"      },
-  { true,  asynParamInt32, "OUT"     },
-  { true,  asynParamOctet, "COMMAND" },
-  { false, asynParamOctet, "STATUS"  },
-  { false, asynParamOctet, "REPLY"   },
+  { false, false, asynParamInt32, "IN"      },
+  { true,  false, asynParamInt32, "OUT"     },
+  { true,  true,  asynParamInt32, "DIR"     },
+  { true,  false, asynParamOctet, "COMMAND" },
+  { false, false, asynParamOctet, "STATUS"  },
+  { false, false, asynParamOctet, "REPLY"   },
 };
 
 /**
@@ -65,6 +67,7 @@ phytronIO::phytronIO(const char* szIOPortName, phytronController* pCtrl, phytron
   , iOut_(iOut)
   , iInReason_(-1)
   , iOutReason_(-1)
+  , iDirReason_(-1)
   , iStatusReason_(-1)
   , iReplyReason_(-1)
 {
@@ -72,6 +75,13 @@ phytronIO::phytronIO(const char* szIOPortName, phytronController* pCtrl, phytron
   {
     struct phytronIOparam* p(&g_aParameters[i]);
     int iReason(-1);
+    if (p->bMCC1only)
+    {
+      if (pCtrl->iCtrlType_ != phytronController::TYPE_MCC)
+        continue;
+      if (epicsStrnCaseCmp(pCtrl->sCtrlType_.c_str(), "MCC-1", 5) != 0)
+        continue;
+    }
     if (createParam(p->szAsynName, p->iAsynType, &iReason) == asynSuccess && iReason >= 0)
     {
       m_mapParameters[iReason] = p;
@@ -84,6 +94,11 @@ phytronIO::phytronIO(const char* szIOPortName, phytronController* pCtrl, phytron
       {
         iOutReason_ = iReason;
         setIntegerParam(iReason, iOut);
+      }
+      else if (strcmp(p->szAsynName, "DIR") == 0)
+      {
+        iDirReason_ = iReason;
+        setIntegerParam(iReason, 0);
       }
       else if (strcmp(p->szAsynName, "STATUS") == 0)
       {
@@ -193,16 +208,17 @@ asynStatus phytronIO::writeInt32(asynUser* pasynUser, epicsInt32 iValue)
     {
       case TYPE_DO:
       case TYPE_DIO:
-        snprintf(szCmd, ARRAY_SIZE(szCmd), "AG%uS%d%d%d%d%d%d%d%d",
+        snprintf(szCmd, ARRAY_SIZE(szCmd), "%s%uS%d%d%d%d%d%d%d%d",
+                 (pasynUser->reason == iDirReason_) ? "EAS" : "AG",
                  byChannel_,
-                 (iValue & 128) ? 1 : 0,
-                 (iValue &  64) ? 1 : 0,
-                 (iValue &  32) ? 1 : 0,
-                 (iValue &  16) ? 1 : 0,
-                 (iValue &   8) ? 1 : 0,
-                 (iValue &   4) ? 1 : 0,
+                 (iValue &   1) ? 1 : 0,
                  (iValue &   2) ? 1 : 0,
-                 (iValue &   1) ? 1 : 0);
+                 (iValue &   4) ? 1 : 0,
+                 (iValue &   8) ? 1 : 0,
+                 (iValue &  16) ? 1 : 0,
+                 (iValue &  32) ? 1 : 0,
+                 (iValue &  64) ? 1 : 0,
+                 (iValue & 128) ? 1 : 0);
         break;
       default: return asynError;
     }
@@ -393,17 +409,17 @@ bool phytronIO::pollIO(std::vector<std::string>& asCmdReplyList, bool bIsRequest
 bool phytronIO::pollIO(std::vector<std::string>& asCmdReplyList, bool bIsRequest, phytronController* pCtrl, IOTYPE &iType, epicsUInt8 byCardNr, epicsUInt8 byChannel, epicsInt32& iIn, epicsInt32& iOut)
 {
   std::string sVal;
-  int iBase(0);
+  bool bMCCbinary(false);
   if (pCtrl->iCtrlType_ == phytronController::TYPE_MCC)
   {
     if (byCardNr > 1)
       return false;
     switch (iType) // MCC-1/MCC-2 has fixed I/O
     {
-      case TYPE_GUESS_D: iType = TYPE_DIO; iBase = 2; break;
-      case TYPE_GUESS_A: iType = TYPE_AI;             break;
-      case TYPE_DIO:                       iBase = 2; break;
-      default:                                        break;
+      case TYPE_GUESS_D: iType = TYPE_DIO; bMCCbinary = true; break;
+      case TYPE_GUESS_A: iType = TYPE_AI;                     break;
+      case TYPE_DIO:                       bMCCbinary = true; break;
+      default:                                                break;
     }
   }
   if (bIsRequest)
@@ -499,7 +515,23 @@ bool phytronIO::pollIO(std::vector<std::string>& asCmdReplyList, bool bIsRequest
     case TYPE_AO:
       sVal = asCmdReplyList[0];
       sVal.erase(0, 1);
-      if (epicsParseInt32(sVal.c_str(), &iOut, iBase, nullptr) != 0)
+      if (bMCCbinary)
+      {
+        epicsInt32 iBit(1);
+        iOut = 0;
+        while (!sVal.empty())
+        {
+          switch (sVal.front())
+          {
+            case '0': break;
+            case '1': iOut |= iBit; break;
+            default: return false;
+          }
+          iBit <<= 1;
+          sVal.erase(0, 1);
+        }
+      }
+      else if (epicsParseInt32(sVal.c_str(), &iOut, 0, nullptr) != 0)
         return false;
       asCmdReplyList.erase(asCmdReplyList.begin(), asCmdReplyList.begin() + 1);
       break;
@@ -514,7 +546,23 @@ bool phytronIO::pollIO(std::vector<std::string>& asCmdReplyList, bool bIsRequest
     case TYPE_AI:
       sVal = asCmdReplyList[0];
       sVal.erase(0, 1);
-      if (epicsParseInt32(sVal.c_str(), &iIn, iBase, nullptr) != 0)
+      if (bMCCbinary)
+      {
+        epicsInt32 iBit(1);
+        iIn = 0;
+        while (!sVal.empty())
+        {
+          switch (sVal.front())
+          {
+            case '0': break;
+            case '1': iIn |= iBit; break;
+            default: return false;
+          }
+          iBit <<= 1;
+          sVal.erase(0, 1);
+        }
+      }
+      else if (epicsParseInt32(sVal.c_str(), &iIn, 0, nullptr) != 0)
         return false;
       asCmdReplyList.erase(asCmdReplyList.begin(), asCmdReplyList.begin() + 1);
       break;

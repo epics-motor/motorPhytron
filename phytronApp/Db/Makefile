@@ -19,6 +19,7 @@ DB += Phytron_AIO.db
 DB += Phytron_AIO_MCC.db
 DB += Phytron_CMD.db
 DB += Phytron_DIO.db
+DB += Phytron_DIO_MCC.db
 
 #----------------------------------------------------
 # If <anyname>.db template is not named <anyname>*.template add

@@ -39,6 +39,7 @@ protected:
   epicsInt32         iOut_;          ///< last polled output value
   int                iInReason_;     ///< index of IN parameter
   int                iOutReason_;    ///< index of OUT parameter
+  int                iDirReason_;    ///< index of DIR parameter
   int                iStatusReason_; ///< index of STATUS parameter
   int                iReplyReason_;  ///< index of REPLY parameter
 

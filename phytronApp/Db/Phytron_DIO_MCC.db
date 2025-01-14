@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: EPICS
+################################################################################
+# Phytron MCC-1 controller digital I/O direction
+# MCC-1 has 8 bidirectional I/O pins, which have to be configured:
+# - a cleared bit is an output
+# - a set bit is an input
+
+record(longout, "$(P):dirDO$(PORT)")
+{
+    field(DESC,"direction bits (0=O,1=I) $(PORT)")
+    field(DTYP,"asynInt32")
+    field(OUT,"@asyn($(PORT),0)DIR")
+    field(FLNK,"$(FLNK=)")
+}

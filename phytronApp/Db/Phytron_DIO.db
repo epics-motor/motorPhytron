@@ -4,8 +4,8 @@
 #   8 digital inputs
 #   8 digital outputs
 # or a Phytron MCC-1 (MCC-2) controller with
-#   4 (8) digital inputs
-#   4 (8) digital outputs
+#   8 digital inputs (MCC-1 configurable)
+#   8 digital outputs (MCC-1 configurable)
 # with 24V logic
 
 ################################################################################

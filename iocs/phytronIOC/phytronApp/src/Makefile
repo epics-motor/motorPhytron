@@ -25,6 +25,9 @@ phytron_DBD += asyn.dbd
 phytron_DBD += drvAsynIPPort.dbd
 phytron_DBD += drvAsynSerialPort.dbd
 #endif
+#ifdef FORWARDASYN
+phytron_DBD += forwardAsyn.dbd
+#endif
 #ifdef AUTOSAVE
 phytron_DBD += asSupport.dbd
 #endif
@@ -34,6 +37,9 @@ phytron_DBD += phytronSupport.dbd
 # Add all the support libraries needed by this IOC
 phytron_LIBS += phytronAxisMotor
 phytron_LIBS += motor
+#ifdef FORWARDASYN
+phytron_LIBS += forwardAsyn
+#endif
 #ifdef ASYN
 phytron_LIBS += asyn
 #endif
