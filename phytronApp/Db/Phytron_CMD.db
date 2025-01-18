@@ -2,27 +2,41 @@
 ################################################################################
 # Phytron direct command communication
 
-record(stringout, "$(P):cmd")
+record(stringout, "$(P):directcommand")
 {
     field(DESC,"command to send")
     field(DTYP,"asynOctetWrite")
-    field(OUT,"@asyn($(PORT),0)COMMAND")
-    field(FLNK,"$(P):rpy")
+    field(OUT,"@asyn($(PORT),0)DIRECT_COMMAND")
+    field(FLNK,"$(P):directreply")
 }
 
-record(stringin,"$(P):rpy")
+record(stringin,"$(P):directreply")
 {
     field(DESC,"received reply")
     field(DTYP,"asynOctetRead")
-    field(INP,"@asyn($(PORT),0)REPLY")
+    field(INP,"@asyn($(PORT),0)DIRECT_REPLY")
     field(SCAN,"$(SCAN=I/O Intr)")
-    field(FLNK,"$(P):stat")
+    field(FLNK,"$(P):directstatus")
 }
-record(stringin,"$(P):stat")
+record(mbbi,"$(P):directstatus")
 {
     field(DESC,"command status")
-    field(DTYP,"asynOctetRead")
-    field(INP,"@asyn($(PORT),0)STATUS")
+    field(DTYP,"asynInt32")
+    field(INP,"@asyn($(PORT),0)DIRECT_STATUS")
+    field(ZRST,"UNKNOWN")
+    field(ZRVL,"0")
+    field(ONST,"ACK")
+    field(ONVL,"1")
+    field(TWST,"NAK")
+    field(TWVL,"2")
+    field(THST,"ERROR")
+    field(THVL,"3")
     field(SCAN,"$(SCAN=I/O Intr)")
+    field(FLNK,"$(P):directreplyInt")
+}
+record(longin,"$(P):directreplyInt")
+{
+    field(DESC,"reply as integer")
+    field(INP,"$(P):directreply")
     field(FLNK,"$(FLNK=)")
 }

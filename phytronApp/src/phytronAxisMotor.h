@@ -60,6 +60,9 @@ Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2025
 #define axisDisableMotorString      "AXIS_DISABLE_MOTOR"
 #define axisBrakeEngageTimeString   "AXIS_BRAKE_ENGAGE_TIME"
 #define axisBrakeReleaseTimeString  "AXIS_BRAKE_RELEASE_TIME"
+#define directCommandString         "DIRECT_COMMAND"
+#define directReplyString           "DIRECT_REPLY"
+#define directStatusString          "DIRECT_STATUS"
 
 typedef enum {
   phytronSuccess,
@@ -157,6 +160,7 @@ public:
   asynStatus writeInt32(asynUser* pasynUser, epicsInt32 iValue);
   asynStatus readFloat64(asynUser* pasynUser, epicsFloat64* pdValue);
   asynStatus writeFloat64(asynUser* pasynUser, epicsFloat64 dValue);
+  asynStatus writeOctet(asynUser* pasynUser, const char* szValue, size_t maxChars, size_t* pnActual);
   asynStatus readOption(asynUser* pasynUser, const char* szKey, char* szValue, int iMaxChars);
   asynStatus writeOption(asynUser* pasynUser, const char* szKey, const char* szValue);
   void report(FILE *fp, int level);
@@ -218,6 +222,9 @@ protected:
   int axisDisableMotor_;
   int axisBrakeEngageTime_;
   int axisBrakeReleaseTime_;
+  int directCommand_;
+  int directReply_;
+  int directStatus_;
 
 private:
   static std::vector<phytronController*> controllers_; ///< list of all phytron controllers

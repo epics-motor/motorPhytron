@@ -103,8 +103,8 @@ phytronController::phytronController(phytronController::TYPE iCtrlType, const ch
   :  asynMotorController(szPhytronPortName,
                          0xFF,
                          NUM_PHYTRON_PARAMS,
-                         asynOptionMask, // additional interfaces
-                         0, //No additional callback interfaces beyond those in base class
+                         asynOctetMask | asynOptionMask, // additional interfaces
+                         asynOctetMask, // additional callback interfaces
                          ASYN_CANBLOCK | ASYN_MULTIDEVICE,
                          1, // autoconnect
                          0, 0)// Default priority and stack size
@@ -166,6 +166,11 @@ phytronController::phytronController(phytronController::TYPE iCtrlType, const ch
   createParam(axisDisableMotorString,     asynParamInt32,   &this->axisDisableMotor_);
   createParam(axisBrakeEngageTimeString,  asynParamFloat64, &this->axisBrakeEngageTime_);
   createParam(axisBrakeReleaseTimeString, asynParamFloat64, &this->axisBrakeReleaseTime_);
+  createParam(directCommandString,        asynParamOctet,   &this->directCommand_);
+  createParam(directReplyString,          asynParamOctet,   &this->directReply_);
+  createParam(directStatusString,         asynParamInt32,   &this->directStatus_);
+  setStringParam(0, directReply_, "");
+  setIntegerParam(0, directStatus_, 0);
 
   /* Connect to phytron controller */
   status = pasynOctetSyncIO->connect(szAsynPortName, 0, &pasynUserController_, NULL);
@@ -323,7 +328,7 @@ asynStatus phytronController::readInt32(asynUser* pasynUser, epicsInt32* piValue
   else if (pasynUser->reason == stopCurrent_)          iParameter = 40;
   else if (pasynUser->reason == runCurrent_)           iParameter = 41;
   else if (pasynUser->reason == boostCurrent_)         iParameter = 42;
-  else if (pasynUser->reason == encoderType_)          iParameter = 43;
+  else if (pasynUser->reason == encoderType_)          iParameter = 34;
   else if (pasynUser->reason == initRecoveryTime_)     iParameter = 13;
   else if (pasynUser->reason == positionRecoveryTime_) iParameter = 16;
   else if (pasynUser->reason == boost_)                iParameter = 17;
@@ -533,6 +538,42 @@ asynStatus phytronController::writeFloat64(asynUser* pasynUser, epicsFloat64 dVa
 
   //Call base implementation
   return asynMotorController::writeFloat64(pasynUser, dValue);
+}
+
+/** Called when asyn clients call pasynOctet->write().
+ * \param[in]  pasynUser  asynUser structure containing the reason
+ * \param[in]  szValue    string to write
+ * \param[in]  maxChars   number of characters to write
+ * \param[out] pnActual   number of characters actually written
+ */
+asynStatus phytronController::writeOctet(asynUser* pasynUser, const char* szValue, size_t maxChars, size_t* pnActual)
+{
+  asynStatus iResult(asynSuccess);
+  std::string sCmd(szValue, maxChars), sReply;
+  if (pasynUser->reason == directCommand_)
+  {
+    iResult = phyToAsyn(sendPhytronCommand(sCmd, sReply, false));
+    if (iResult == asynSuccess)
+    {
+      setStringParam(0, directReply_, "");
+      setIntegerParam(0, directStatus_, 0);
+      if      (sReply.substr(0, 1) == "\x06") setIntegerParam(0, directStatus_, 1);
+      else if (sReply.substr(0, 1) == "\x15") setIntegerParam(0, directStatus_, 2);
+      else
+      {
+        setIntegerParam(0, directStatus_, 3);
+        goto noerase;
+      }
+      sReply.erase(0, 1);
+noerase:
+      setStringParam(0, directReply_, sReply);
+    }
+  }
+  else if (pasynUser->reason == directReply_ || pasynUser->reason == directStatus_)
+    iResult = asynError;
+  if (iResult == asynSuccess)
+    iResult = asynPortDriver::writeOctet(pasynUser, szValue, maxChars, pnActual);
+  return iResult;
 }
 
 /** Called when asyn clients call pasynOption->read().
@@ -839,6 +880,7 @@ asynStatus phytronController::poll()
             asynPrint(pasynUserSelf, ASYN_TRACE_ERROR, "detected a difference in cached fake-homed-bit value, did the Phytron a restart?\n");
             if (allow_exit_on_error_)
               epicsExit(1);
+            fake_homed_cache_[0] = static_cast<epicsUInt64>(floor(dTmp + 0.5));
           }
           asResponses.erase(asResponses.begin());
           break;
@@ -1539,8 +1581,12 @@ asynStatus phytronAxis::home(double minVelocity, double maxVelocity, double acce
     {
       pC_->fake_homed_cache_[iIndex] &= ~(1 << (axisNo_ % 10));
       if (pC_->fake_homed_enable_)
+      {
+        if (!iIndex)
+          pC_->fake_homed_cache_[0] |= 1;
         asCommands.push_back(std::string("R") + std::to_string(1001 + iIndex) + szSetChar +
                              std::to_string(pC_->fake_homed_cache_[iIndex]));
+      }
     }
   }
 
@@ -1672,8 +1718,12 @@ asynStatus phytronAxis::setPosition(double position)
     {
       pC_->fake_homed_cache_[iIndex] |= 1 << (axisNo_ % 10);
       if (pC_->fake_homed_enable_)
+      {
+        if (!iIndex)
+          pC_->fake_homed_cache_[0] |= 1;
         asCommands.push_back(std::string("R") + std::to_string(1001 + iIndex) + szSetChar
                              + std::to_string(pC_->fake_homed_cache_[iIndex]));
+      }
     }
   }
   phyStatus = pC_->sendPhytronMultiCommand(asCommands, asCommands, false, iPollMethod_ == pollMethodSerial);

@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--Saved on 2025-01-18 12:04:35 by Lutz Rossa-->
+<display version="2.0.0">
+  <name>$(P)$(M) MCC axis status</name>
+  <width>180</width>
+  <height>270</height>
+  <background_color>
+    <color red="229" green="229" blue="229">
+    </color>
+  </background_color>
+  <actions>
+  </actions>
+  <grid_step_x>6</grid_step_x>
+  <grid_step_y>6</grid_step_y>
+  <widget type="led" version="2.0.0">
+    <name>LED</name>
+    <pv_name>$(P)$(M)-AXIS-BUSY</pv_name>
+    <bit>0</bit>
+    <x>149</x>
+    <y>65</y>
+    <width>22</width>
+    <height>22</height>
+    <on_color>
+      <color name="OK" red="0" green="255" blue="0">
+      </color>
+    </on_color>
+    <actions>
+    </actions>
+  </widget>
+  <widget type="led" version="2.0.0">
+    <name>LED_4</name>
+    <pv_name>$(P)$(M)-LS-POS</pv_name>
+    <bit>0</bit>
+    <x>149</x>
+    <y>105</y>
+    <width>22</width>
+    <height>22</height>
+    <on_color>
+      <color name="Major" red="255" green="0" blue="0">
+      </color>
+    </on_color>
+    <actions>
+    </actions>
+  </widget>
+  <widget type="led" version="2.0.0">
+    <name>LED_5</name>
+    <pv_name>$(P)$(M)-LS-NEG</pv_name>
+    <bit>0</bit>
+    <x>149</x>
+    <y>145</y>
+    <width>22</width>
+    <height>22</height>
+    <on_color>
+      <color name="Major" red="255" green="0" blue="0">
+      </color>
+    </on_color>
+    <actions>
+    </actions>
+  </widget>
+  <widget type="led" version="2.0.0">
+    <name>LED_6</name>
+    <pv_name>$(P)$(M)-LS-CNT</pv_name>
+    <bit>0</bit>
+    <x>149</x>
+    <y>185</y>
+    <width>22</width>
+    <height>22</height>
+    <on_color>
+      <color name="Major" red="255" green="0" blue="0">
+      </color>
+    </on_color>
+    <actions>
+    </actions>
+  </widget>
+  <widget type="led" version="2.0.0">
+    <name>LED_11</name>
+    <pv_name>$(P)$(M)-PS-ERR</pv_name>
+    <bit>0</bit>
+    <x>149</x>
+    <y>225</y>
+    <width>22</width>
+    <height>22</height>
+    <on_color>
+      <color name="STOP" red="255" green="0" blue="0">
+      </color>
+    </on_color>
+    <actions>
+    </actions>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label</name>
+    <text>AXIS BUSY</text>
+    <x>5</x>
+    <y>63</y>
+    <width>115</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_4</name>
+    <text>LIMIT SWITCH +</text>
+    <x>5</x>
+    <y>103</y>
+    <width>131</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_5</name>
+    <text>LIMIT SWITCH -</text>
+    <x>5</x>
+    <y>143</y>
+    <width>131</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_6</name>
+    <text>LIMIT SWITCH CENTER</text>
+    <x>5</x>
+    <y>183</y>
+    <width>143</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_13</name>
+    <text>AXIS POWER STAGE ERROR</text>
+    <x>5</x>
+    <y>223</y>
+    <width>131</width>
+    <height>33</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_25</name>
+    <text>$(P)$(M)</text>
+    <x>11</x>
+    <y>14</y>
+    <width>137</width>
+    <height>44</height>
+    <font>
+      <font name="Header 1" family="Liberation Sans" style="BOLD" size="22.0">
+      </font>
+    </font>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+</display>

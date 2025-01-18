@@ -21,23 +21,28 @@ Table of contents:
     - Example Application
     - New Applicaion
 - Database
-    - Supported I1AM01, I1AM02, I1EM01, I1EM02 Features
+    - Single motor axis features
+         - Supported devices
          - Initialization records
          - Status
          - Homing
+         - Brake support
          - Reset
-         - I1AM01, I1AM02, I1EM01, I1EM02 parameters
+         - List of parameters
     - Supported MCM01 Features
-    - Supported MCC-1, MCC-2 Features
     - Motor record
+    - Supported analog and digital I/O
+    - Supported direct command interface
     - List of remaining I1AM01, I1AM02, I1EM01, I1EM02, MCC-1, MCC-2 parameters
       handled by the motor record, internally by controller, or not applicable
 - GUI
 - Asyn option interface
 
 
+=================================
 Controller and axis configuration
 =================================
+
 Example application:
 --------------------
 Motor record includes an example Phytron application. Before using it do:
@@ -71,11 +76,6 @@ test_LIBS += phytronAxisMotor
 
 An example motor.substitutions.phytron and st.cmd.phytron files are located in 
 the $(MOTOR_RECORD)/iocBoot/iocWithAsyn/ directory.
-
-********************************************************************************
-WARNING: For the controller to work properly all three database files (
-Phytron_I1AM01.db, Phytron_MCM01.db and Phytron_motor.db) must be used.
-********************************************************************************
 
 Start up script must perform the following:
 Before configuring the controller the user must create an asyn port by running 
@@ -158,9 +158,9 @@ Note: The brake support inside EPICS records may overwrite this.
 
 ********************************************************************************
 WARNING: For every axis, the user must specify it's address (ADDR macro) in the 
-motor.substitutions file for Phytron_motor.db and PhytronI1AM01.db files.
-The address is composed of the I1AM01 module index and the axis index. If, for 
-example, the startup script configures the following axis:
+motor.substitutions file for the database files. The address is composed of the
+I1AM01 module index and the axis index. If, for example, the startup script
+configures the following axis:
 
 drvAsynIPPortConfigure("testRemote","10.5.1.181:22222",0,0,1)
 phytronCreateController ("phyMotionPort", "testRemote", 100, 100, 1000)
@@ -198,20 +198,36 @@ dbLoadTemplate "motor.substitutions.phytron"
 
 iocInit()
 
+
+=========
 Database:
 =========
-All three database files (Phytron_I1AM01.db, Phytron_MCM01.db, Phytron_motor.db)
-in $(MOTOR_ROOT)/motorApp/Db are expanded by motor.substitutions.phytron file in
-$(MOTOR_ROOT)/iocBoot/iocWithAsyn
+All 8 database files (Phytron_AIO.db, Phytron_AIO_MCC.db, Phytron_CMD.db,
+Phytron_DIO.db, Phytron_DIO_MCC1.db, Phytron_I1AM01.db, Phytron_MCM01.db,
+Phytron_motor.db) in $(MOTOR_ROOT)/motorApp/Db are expanded by
+motor.substitutions.phytron file in $(MOTOR_ROOT)/iocBoot/iocWithAsyn
 
-********************************************************************************
-WARNING: For the controller to work properly all three database files (
-Phytron_I1AM01.db, Phytron_MCM01.db and Phytron_motor.db) must be used.
-********************************************************************************
+For using an already configured motor axis, at least (Phytron_motor.db) must be
+used. To configure an Phytron axis, also (Phytron_I1AM01.db) is necessary.
+If you want to use phyMOTION controller functions, use (Phytron_MCM01.db).
 
-===============================================
-I1AM01 Controller Features - Phytron_I1AM01.db:
-===============================================
+The analog I/O support needs the files (Phytron_AIO.db) for phyMOTION or
+(Phytron_AIO_MCC.db) for MCC-1/MCC-2 controllers. The digital I/O support needs
+the file (Phytron_DIO.db) and especially for MCC-1 include (Phytron_DIO_MCC1.db)
+too.
+
+There is a direct communication option available with (Phytron_CMD.db).
+
+
+Single motor axis features - Phytron_I1AM01.db or Phytron_MCC.db:
+=================================================================
+
+Supported devices:
+------------------
+The database files includes support for Phytron parameters used by different
+axes. (Phytron_I1AM01.db) should support I1AM01, I1AM02, I1AM03, I1EM01, I1EM02.
+(Phytron_MCC.db) should support MCC-1 and MCC-2.
+
 Initialization:
 ---------------
 Database contains 2 initialization records $(P)$(M)-INIT-AXIS-1/2 which are used
@@ -221,7 +237,7 @@ motor.substitutions file.
 Status:
 -------
 Database contains several status records. Ai record $(P)$(M)-STATUS_ reads the 
-status value from the I1AM01 module, 2 mbbiDirect records ($(P)$(M)-STATUS-1/2) 
+status value from the axis module, 2 mbbiDirect records ($(P)$(M)-STATUS-1/2)
 are provided to set the status bits - 23 bi records are provided to parse these
 status bits. An additional calc record is provided ($(P)$(M)-AXIS-ERR) which
 sets it's value to 1 if any of the error bits are set (if only notification 
@@ -232,7 +248,7 @@ Homing:
 RECORDS mbbo/mbbi: $(P)$(M)-HOMING_SET/_GET are used to set and readback the 
 type of homing to be used. Homing is executed with the use of motor record's 
 HOMF, HOMR fields. The following options are available for $(P)$(M)-HOMING_SET, 
-please keep in mind that offsets defined by I1AM01 parameters P11 and P12 (see 
+please keep in mind that offsets defined by Phytron parameters P11 and P12 (see
 phylogic-en.pdf and see below for records corresponding to P11 and P12) affect
 the final position after the homing procedure:
 <- recordValue (Homing description); Phytron commands for HOMF and HOMR>
@@ -255,7 +271,7 @@ and start moving in the opposite direction until center switch is reached
 
 - Reference-Center (Driving on a reference signal to center)
         HOMF - m.aRC+, HOMR - m.aRC-
-COMMEN: If limit switch is reached, controller goes to axis error state
+COMMENT: If limit switch is reached, controller goes to axis error state
 
 - Ref-Center-Encoder (Driving on a reference signal to center and then to 
 encoder zero pulse)
@@ -293,8 +309,8 @@ process the initialization records $(P)$(M)-INIT-AXIS-1/2 after a DELAY time
 defined by the macro DLY in the substitutions file.
 
 
-The following I1AM01 parameters are exposed as additional EPICS records:
-------------------------------------------------------------------------
+The following parameters are exposed as additional EPICS records:
+-----------------------------------------------------------------
 Param. index: feature;
 Record name(s):
 Comment:
@@ -321,7 +337,7 @@ RECORDS ao/ai: $(P)$(M)-POS-TIMEOUT_SET/_GET
 P17: Defines when to use boost current 
 RECORDS mbbo/mbbi: $(P)$(M)-BOOST_SET/_GET
 -------------------------------------
-P26: Encoder data transfer rate (ONLY FOR SSI)
+P26: Encoder data transfer rate (phyMOTION and SSI only)
 RECORDS mbbo/mbbi: $(P)$(M)-ENC-RATE_SET/_GET
 -------------------------------------
 P27: Limit switch type
@@ -330,7 +346,7 @@ RECORDS mbbo/mbbi: $(P)$(M)-SWITCH-TYP_SET/_GET
 P28: Power stage off/on
 RECORDS bo/bi: $(P)$(M)-PWR-STAGE-MODE_SET/_GET
 -------------------------------------
-P34: Encoder type
+P34: Encoder type (phyMOTION only)
 RECORDS mbbo/mbbi: $(P)$(M)-ENC-TYP_SET/_GET
 -------------------------------------
 P35: Encoder resolution - for SSI and EnDat encoders
@@ -368,53 +384,117 @@ RECORDS: ao/ai: $(P)$(M)-CURRENT-DELAY_SET/_GET
 P49: Power stage temperature
 RECORDS: ai: $(P)$(M)-PS-TEMPERATURE
 -------------------------------------
-P53: Power stage monitoring
+P53: Power stage monitoring (phyMOTION only)
 RECORDS: bo/bi: $(P)$(M)-PS-MONITOR/_GET
 -------------------------------------
-P54: Motor temperature
+P54: Motor temperature (phyMOTION only)
 RECORDS: ai: $(P)$(M)-MOTOR-TEMP
 
 
-
-============================================
 MCM01 Controller Features - Phytron_MCM01.db:
-============================================
-This database file contains records for reading MCM01 status and to reset the 
-MCM01 module.
+=============================================
+This database file contains records for reading phyMOTION MCM01 status and to
+reset the MCM01 module.
 
-Ai record $(P)-STATUS_ reads the status value from the MCM01 module, a 
-mbbiDirect record is provided to set the status bits - 16 bi records are 
-provided to parse these bits. An additional calc record is provided 
-($(P)-CON-ERR) which sets it's value to 1 if any of the error bits are set (if 
-only noticiation bits are set, e.g. terminal-activated, the value of 
+Ai record $(P)-STATUS_ reads the status value from the MCM01 module, a
+mbbiDirect record is provided to set the status bits - 16 bi records are
+provided to parse these bits. An additional calc record is provided
+($(P)-CON-ERR) which sets it's value to 1 if any of the error bits are set (if
+only noticiation bits are set, e.g. terminal-activated, the value of
 $(P)-CON-ERR is 0)
 
-Bo record $(P)-RESET resets the MCM01 controller, every time it is processed. 
+Bo record $(P)-RESET resets the MCM01 controller, every time it is processed.
 $(P)-RESET_ alternates between 0 and 1, so the monitor is posted on every reset
 and the axis REINIT_ record can trigger the initialization procedures.
 
-================================
+
 Motor Record - Phytron_motor.db:
 ================================
-This database file is similar to basic_asyn_motor.db, the only difference is, 
-that 2 additional fields are defined:
-  - field(ERES,"$(ERES)") - encoder resolution
-  - field(VMAX,"$(VMAX)") - maximum velocity
+This database file is similar to (basic_asyn_motor.db), the differences are,
+- additional field for autosave support
+  info(autosaveFields, "DVAL DIR VELO VBAS VMAX ACCL BDST BVEL BACC MRES ERES PREC EGU DHLM DLLM OFF")
+
+- additional required fields
+  field(ERES,"$(ERES)")  - encoder resolution
+  field(UREV,"$(UREV)")  - EGU's per revolution
+  field(VMAX,"$(VMAX)")  - maximum velocity
+
+- optional fields
+  field(DTYP,"$(DTYP=asynMotor)")  - device type
+  field(MDEL,"$(MDEL=)")           - monitor deadband
+  field(MRES,"$(MRES=)")           - motor resolution
+  field(OFF, "$(OFF=0)")           - offset
+  field(RDBD,"$(RDBD=0)")          - retry dead band
+  field(RTRY,"$(RTRY=0)")          - max. retry count
+  field(SREV,"$(SREV=200)")        - steps per revolution
+  field(TWV, "$(TWV=1)")           - tweak step value
+  field(UEIP,"$(UEIP=Yes)")        - use encoder if Present
 
 
-===============================================================================
-List of remaining I1AM01 parameters handled by the motor record,  internally by 
+Supported analog and digital I/O - Phytron_{AIO,DIO}.db,
+Phytron_{AIO_MCC,DIO_MCC1}.db:
+========================================================
+The database files should be included for using extra I/O options.
+
+To use an analog or digital port, you have to create the controller first
+(see above "phytronCreateController" or "phytronCreateMCC"). Then you have to
+create a I/O instance for every analog port or digital group port with
+"phytronCreateAnalog" or "phytronCreateDigital". These create additional
+asyn ports and use the port of the controller.
+
+MCC-1 or MCC-2:
+  These devices has some 8 digital I/O and one or two analog inputs included.
+  Include the file (Phytron_AIO_MCC.db and/or Phytron_DIO.db) to use it.
+  Because the MCC-1 has bidirectional (shared) I/O ports, please include the
+  file (Phytron_DIO_MCC1.db) to configure the direction.
+  While creating a I/O port, use card number 1 and start with channel 1.
+
+phyMOTION:
+  This system needs the AIOM01.1 for analog and DIOM01.1 for digital I/O.
+  Any AIOM01.1 has 4 analog inputs and 4 analog outputs, please use the file
+  (Phytron_AIO.db).
+  Any DIOM01.1 has 8 digital inputs and 8 digital outputs, please use the file
+  (Phytron_DIO.db)
+  While creating a I/O port, you have to provide the card number and channel
+  (both starting with 1). The digital group has always the channel 1
+
+While creating the I/O port, use could provide additional Phytron commands as
+string, which will be send to configure the port or to set values. This command
+list might be an empty string.
+
+The database files need an PORT, which is the newly created asyn port
+(first argument to "phytronCreateAnalog" or "phytronCreateDigital").
+There is no need for any other address (ADDR) here (in opposite to axes).
+
+
+Supported direct command interface - Phytron_CMD.db:
+====================================================
+The database file should be included for direct command interface to the
+Phytron controller (see above "phytronCreateController" or "phytronCreateMCC").
+It needs only a valid prefix P and the PORT of the controller.
+
+Usage: write a single command to the PV "$(P):directcommand" and look into
+the resulting PVs "$(P):directreply" and "$(P):directstatus". The reply is
+stored and the status has the value "ACK" on success (or execution) or "NAK",
+if the controller rejected it.
+
+
+List of remaining parameters handled by the motor record, internally by
 controller, or not applicable
-===============================================================================
-P02 (Units of movemnt) - Always set to step - unit conversion is done within the
-motor record.
+=======================================================================
+
+P01 (Type of movement) - Set to hardware limit switches (1)
+
+P02 (Units of movemnt) - Always set to step - unit conversion is done within
+the motor record.
 
 P03 (Conversion factor for the thread) - Always set to 1 - unit conversion is 
 done within the motor record.
 
 P04 (Start/stop frequency) - Set by phytronAxis::move, before move is executed.
 
-P07 (Emergency stop ramp) - Set by phytronAxis::stop, before stop is executed.
+P07 (Emergency stop ramp) - Set to meaningful value, e.g. when hitting a limit
+switch. Not set by this support.
 
 P08 (Initialization run frequency) - Set by phytronAxis::home, before homing is 
 executed.
@@ -424,10 +504,20 @@ P09 (Ramp M0P) - Set by phytronAxis::home, before homing is executed.
 P10 (Run frequency for leaving the limit switch) - Set by phytronAxis::home, 
 before homing is executed
 
+P11 (M0P offset for positive limit switch direction) - normally 0
+
+P12 (M0P offset for negative limit switch direction) - normally 0
+
+P13 (Recovery Time M0P)
+
 P14 (Run frequency during program operation) - Set by phytronAxis::move, before
 move is executed
 
 P15 (Ramp for run frequency) - Set by phytronAxis::move, before move is executed
+
+P16 (Recovery time position) - is ms (default 20)
+
+P17 (Boost) - 0=off (default), 1=always on, 2=while ac-/deceleration
 
 P18 (Used internally by controller)
 
@@ -446,21 +536,60 @@ motor record handles software limits
 P25 (Compensation for play) - Ignored, because motor records handles backlash 
 corrections
 
+P26 (Link speed for SSI encoders)
+
+P27 (Limit switch type) - bit0: limit-, bit1: center, bit2: limit+, 0=NCC, 1=NOC
+
+P28 (axis options) Power stage mode after power on
+
 P29 (Not used (by controller))
 
 P30 and P31 (For I4XM01 only)
 
 P32 and P33 (Not used (by controller))
 
+P34 (Encoder type) - 0=none, 1=incremental 5.0V, ...
+
+P35 (Encoder resolution for SSI, EnDat encoders)
+
+P36 (Encoder function) - 0=disable, 1=enable SFI
+
+P37 (Encoder tolerance for SFI)
+
+P38 (Encoder Direction) - 0=positive, 1=negative
+
+P39 (Encoder Ratio) - set by phytronAxis::setEncoderRatio
+
+P40 (Stop current)  - in 0.01A
+P41 (Run current)   - in 0.01A (see also P17)
+P42 (Boost current) - in 0.01A (see also P17)
+
+P43 (Current hold time)
+
 P44 (For I4XM01 only)
 
+P45 (Step resolution)
+
 P46, P47, P48 (Not used (by controller))
+
+P49 (Power stage temperature) in 0.1 deg C
 
 P50 and P51 (For I4XM01 only)
 
 P52 (Internally used for trigger position)
 
+P53 (Power stage monitor)
 
+P54 (Motor stage temperature) in 0.1 deg C
+P55 (Motor temperature warning)
+P56 (Motor temperature shut-off)
+
+P57 (Resolver voltage)
+
+P58 (Resolver ratio)
+
+
+====
 GUI:
 ====
 The follwoing CSS BOY GUI screens are located in motorApp/op/opi:
@@ -504,6 +633,7 @@ Contains an LED for each of the 16 bi records parsing the $(P)-STATUS-BITS_
 mbbiDirect record
 
 
+======================
 Asyn option interface:
 ======================
 This support wants to be backward compatible to older versions as much as

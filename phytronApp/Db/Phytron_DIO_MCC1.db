@@ -5,7 +5,7 @@
 # - a cleared bit is an output
 # - a set bit is an input
 
-record(longout, "$(P):dirDO$(PORT)")
+record(mbboDirect, "$(P):dir$(PORT)")
 {
     field(DESC,"direction bits (0=O,1=I) $(PORT)")
     field(DTYP,"asynInt32")

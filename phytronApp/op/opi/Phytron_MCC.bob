@@ -1,0 +1,1003 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>$(P)$(M) Phytron MCC axis</name>
+  <height>500</height>
+  <background_color>
+    <color red="229" green="229" blue="229">
+    </color>
+  </background_color>
+  <actions>
+  </actions>
+  <grid_step_x>6</grid_step_x>
+  <grid_step_y>6</grid_step_y>
+  <widget type="label" version="2.0.0">
+    <name>Label</name>
+    <text>AXIS MODE</text>
+    <x>17</x>
+    <y>129</y>
+    <width>80</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="combo" version="2.0.0">
+    <name>Menu Button</name>
+    <pv_name>$(P)$(M)-MOVE-TYP_SET</pv_name>
+    <x>116</x>
+    <y>132</y>
+    <width>134</width>
+    <height>23</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_1</name>
+    <text>HOMING MODE</text>
+    <x>17</x>
+    <y>160</y>
+    <width>97</width>
+    <height>34</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="combo" version="2.0.0">
+    <name>Menu Button_1</name>
+    <pv_name>$(P)$(M)-HOMING_SET</pv_name>
+    <x>116</x>
+    <y>170</y>
+    <width>134</width>
+    <height>23</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update</name>
+    <pv_name>$(P)$(M)-MOVE-TYP_GET</pv_name>
+    <x>260</x>
+    <y>132</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_1</name>
+    <pv_name>$(P)$(M)-HOMING_GET</pv_name>
+    <x>260</x>
+    <y>170</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_2</name>
+    <text>POSITIVE OFFSET</text>
+    <x>419</x>
+    <y>56</y>
+    <width>111</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_3</name>
+    <text>NEGATIVE OFFSET</text>
+    <x>419</x>
+    <y>94</y>
+    <width>111</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textentry" version="3.0.0">
+    <name>Text_1</name>
+    <pv_name>$(P)$(M)-POS-OFFSET_SET</pv_name>
+    <x>539</x>
+    <y>56</y>
+    <height>26</height>
+    <background_color>
+      <color red="229" green="229" blue="229">
+      </color>
+    </background_color>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_2</name>
+    <pv_name>$(P)$(M)-POS-OFFSET_GET</pv_name>
+    <x>662</x>
+    <y>56</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_3</name>
+    <pv_name>$(P)$(M)-NEG-OFFSET_GET</pv_name>
+    <x>662</x>
+    <y>94</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_4</name>
+    <text>STOP CURRENT</text>
+    <x>419</x>
+    <y>245</y>
+    <width>111</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textentry" version="3.0.0">
+    <name>Text_2</name>
+    <pv_name>$(P)$(M)-STOP-CURRENT_SET</pv_name>
+    <x>539</x>
+    <y>245</y>
+    <height>26</height>
+    <background_color>
+      <color red="229" green="229" blue="229">
+      </color>
+    </background_color>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_4</name>
+    <pv_name>$(P)$(M)-STOP-CURRENT_GET</pv_name>
+    <x>662</x>
+    <y>245</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_5</name>
+    <text>RUN CURRENT</text>
+    <x>419</x>
+    <y>283</y>
+    <width>111</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textentry" version="3.0.0">
+    <name>Text_3</name>
+    <pv_name>$(P)$(M)-RUN-CURRENT_SET</pv_name>
+    <x>539</x>
+    <y>283</y>
+    <height>26</height>
+    <background_color>
+      <color red="229" green="229" blue="229">
+      </color>
+    </background_color>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_5</name>
+    <pv_name>$(P)$(M)-RUN-CURRENT_GET</pv_name>
+    <x>662</x>
+    <y>283</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_6</name>
+    <text>BOOST CURRENT</text>
+    <x>419</x>
+    <y>321</y>
+    <width>111</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textentry" version="3.0.0">
+    <name>Text_4</name>
+    <pv_name>$(P)$(M)-BOOST-CURRENT_SET</pv_name>
+    <x>539</x>
+    <y>321</y>
+    <height>26</height>
+    <background_color>
+      <color red="229" green="229" blue="229">
+      </color>
+    </background_color>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_6</name>
+    <pv_name>$(P)$(M)-BOOST-CURRENT_GET</pv_name>
+    <x>662</x>
+    <y>321</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_7</name>
+    <text>STEP RES.</text>
+    <x>17</x>
+    <y>206</y>
+    <width>80</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="combo" version="2.0.0">
+    <name>Menu Button_2</name>
+    <pv_name>$(P)$(M)-STEP-RES_SET</pv_name>
+    <x>116</x>
+    <y>208</y>
+    <width>134</width>
+    <height>23</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_7</name>
+    <pv_name>$(P)$(M)-STEP-RES_GET</pv_name>
+    <x>260</x>
+    <y>208</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_8</name>
+    <text>STATUS</text>
+    <x>17</x>
+    <y>56</y>
+    <width>56</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="action_button" version="3.0.0">
+    <name>Action Button</name>
+    <actions>
+      <action type="open_display">
+        <file>Phytron_MCCStatus.bob</file>
+        <target>tab</target>
+      </action>
+    </actions>
+    <text>MORE</text>
+    <x>145</x>
+    <y>56</y>
+    <width>105</width>
+    <height>26</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <tooltip>$(actions)</tooltip>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_9</name>
+    <text>ENCODER TYPE</text>
+    <x>17</x>
+    <y>276</y>
+    <width>97</width>
+    <height>34</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="combo" version="2.0.0">
+    <name>Menu Button_3</name>
+    <pv_name>$(P)$(M)-ENC-TYP_SET</pv_name>
+    <x>116</x>
+    <y>284</y>
+    <width>134</width>
+    <height>23</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_9</name>
+    <pv_name>$(P)$(M)-ENC-TYP_GET</pv_name>
+    <x>260</x>
+    <y>284</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_10</name>
+    <text>INITIALIZATION
+TIME LAPSE</text>
+    <x>419</x>
+    <y>129</y>
+    <width>111</width>
+    <height>33</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textentry" version="3.0.0">
+    <name>Text_5</name>
+    <pv_name>$(P)$(M)-INIT-TIMEOUT_SET</pv_name>
+    <x>539</x>
+    <y>132</y>
+    <height>26</height>
+    <background_color>
+      <color red="229" green="229" blue="229">
+      </color>
+    </background_color>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_10</name>
+    <pv_name>$(P)$(M)-INIT-TIMEOUT_GET</pv_name>
+    <x>662</x>
+    <y>132</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_11</name>
+    <text>POSITIONING
+TIME LAPSE</text>
+    <x>419</x>
+    <y>170</y>
+    <width>111</width>
+    <height>33</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textentry" version="3.0.0">
+    <name>Text_6</name>
+    <pv_name>$(P)$(M)-POS-TIMEOUT_SET</pv_name>
+    <x>539</x>
+    <y>170</y>
+    <height>26</height>
+    <background_color>
+      <color red="229" green="229" blue="229">
+      </color>
+    </background_color>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_11</name>
+    <pv_name>$(P)$(M)-POS-TIMEOUT_GET</pv_name>
+    <x>662</x>
+    <y>170</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_14</name>
+    <text>SWITCH TYPE</text>
+    <x>17</x>
+    <y>359</y>
+    <height>24</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="combo" version="2.0.0">
+    <name>Menu Button_5</name>
+    <pv_name>$(P)$(M)-SWITCH-TYP_SET</pv_name>
+    <x>116</x>
+    <y>360</y>
+    <width>134</width>
+    <height>23</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_14</name>
+    <pv_name>$(P)$(M)-SWITCH-TYP_GET</pv_name>
+    <x>260</x>
+    <y>358</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_15</name>
+    <text>POWER STAGE </text>
+    <x>17</x>
+    <y>397</y>
+    <width>111</width>
+    <height>24</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="combo" version="2.0.0">
+    <name>Menu Button_6</name>
+    <pv_name>$(P)$(M)-PWR-STAGE-MODE_SET</pv_name>
+    <x>116</x>
+    <y>398</y>
+    <width>134</width>
+    <height>23</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_15</name>
+    <pv_name>$(P)$(M)-PWR-STAGE-MODE_GET</pv_name>
+    <x>260</x>
+    <y>398</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_16</name>
+    <text>SSI RESOLUTION</text>
+    <x>419</x>
+    <y>348</y>
+    <width>121</width>
+    <height>40</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textentry" version="3.0.0">
+    <name>Text_8</name>
+    <pv_name>$(P)$(M)-ENC-RES_SET</pv_name>
+    <x>539</x>
+    <y>359</y>
+    <height>26</height>
+    <background_color>
+      <color red="229" green="229" blue="229">
+      </color>
+    </background_color>
+    <actions>
+    </actions>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_16</name>
+    <pv_name>$(P)$(M)-ENC-RES_GET</pv_name>
+    <x>662</x>
+    <y>359</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_18</name>
+    <text>CURRENT HOLD TIME</text>
+    <x>419</x>
+    <y>393</y>
+    <width>111</width>
+    <height>33</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textentry" version="3.0.0">
+    <name>Text_10</name>
+    <pv_name>$(P)$(M)-CURRENT-DELAY_SET</pv_name>
+    <x>539</x>
+    <y>397</y>
+    <height>26</height>
+    <background_color>
+      <color red="229" green="229" blue="229">
+      </color>
+    </background_color>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_19</name>
+    <pv_name>$(P)$(M)-CURRENT-DELAY_GET</pv_name>
+    <x>662</x>
+    <y>397</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_19</name>
+    <text>POWER STAGE
+TEMPERATURE</text>
+    <x>17</x>
+    <y>429</y>
+    <width>111</width>
+    <height>33</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_20</name>
+    <pv_name>$(P)$(M)-PS-TEMPERATURE</pv_name>
+    <x>260</x>
+    <y>436</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textentry" version="3.0.0">
+    <name>Text_11</name>
+    <pv_name>$(P)$(M)-NEG-OFFSET_SET</pv_name>
+    <x>539</x>
+    <y>94</y>
+    <height>26</height>
+    <background_color>
+      <color red="229" green="229" blue="229">
+      </color>
+    </background_color>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_12</name>
+    <text>BOOST</text>
+    <x>17</x>
+    <y>245</y>
+    <width>111</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_12</name>
+    <pv_name>$(P)$(M)-BOOST_GET</pv_name>
+    <x>260</x>
+    <y>246</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="combo" version="2.0.0">
+    <name>Menu Button_8</name>
+    <pv_name>$(P)$(M)-BOOST_SET</pv_name>
+    <x>116</x>
+    <y>246</y>
+    <width>134</width>
+    <height>23</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+  </widget>
+  <widget type="led" version="2.0.0">
+    <name>LED</name>
+    <pv_name>$(P)$(M)-AXIS-ERR</pv_name>
+    <bit>0</bit>
+    <x>116</x>
+    <y>58</y>
+    <width>22</width>
+    <height>22</height>
+    <on_color>
+      <color name="Major" red="255" green="0" blue="0">
+      </color>
+    </on_color>
+    <actions>
+    </actions>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_23</name>
+    <text>$(P)$(M)</text>
+    <x>17</x>
+    <y>9</y>
+    <width>171</width>
+    <height>44</height>
+    <font>
+      <font name="Header 1" family="Liberation Sans" style="BOLD" size="22.0">
+      </font>
+    </font>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_24</name>
+    <text>ENCODER DIRECTION</text>
+    <x>18</x>
+    <y>314</y>
+    <width>97</width>
+    <height>34</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_24</name>
+    <pv_name>$(P)$(M)-ENC-DIR_GET</pv_name>
+    <x>260</x>
+    <y>322</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="combo" version="2.0.0">
+    <name>Menu Button_9</name>
+    <pv_name>$(P)$(M)-ENC-DIR_SET</pv_name>
+    <x>116</x>
+    <y>322</y>
+    <width>134</width>
+    <height>23</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_26</name>
+    <text>RESET</text>
+    <x>17</x>
+    <y>94</y>
+    <width>56</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="action_button" version="3.0.0">
+    <name>Action Button_1</name>
+    <actions>
+      <action type="write_pv">
+        <pv_name>$(P)$(M)-RESET</pv_name>
+        <value>1</value>
+      </action>
+    </actions>
+    <pv_name>$(P)$(M)-RESET</pv_name>
+    <text>RESET AXIS</text>
+    <x>260</x>
+    <y>95</y>
+    <width>128</width>
+    <height>23</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+  </widget>
+  <widget type="action_button" version="3.0.0">
+    <name>Action Button_4</name>
+    <actions>
+      <action type="write_pv">
+        <pv_name>$(P)$(M)-RESET-STATUS</pv_name>
+        <value>1</value>
+      </action>
+    </actions>
+    <text>RESET STATUS</text>
+    <x>116</x>
+    <y>94</y>
+    <width>134</width>
+    <height>25</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <tooltip>$(actions)</tooltip>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Label_27</name>
+    <text>ENCODER SFI</text>
+    <x>419</x>
+    <y>208</y>
+    <width>111</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textentry" version="3.0.0">
+    <name>Text_12</name>
+    <pv_name>$(P)$(M)-ENC-SFI_SET</pv_name>
+    <x>539</x>
+    <y>208</y>
+    <height>26</height>
+    <background_color>
+      <color red="229" green="229" blue="229">
+      </color>
+    </background_color>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update_25</name>
+    <pv_name>$(P)$(M)-ENC-SFI_GET</pv_name>
+    <x>662</x>
+    <y>208</y>
+    <width>128</width>
+    <height>26</height>
+    <vertical_alignment>1</vertical_alignment>
+    <wrap_words>false</wrap_words>
+    <actions>
+    </actions>
+    <border_color>
+      <color red="0" green="128" blue="255">
+      </color>
+    </border_color>
+  </widget>
+</display>

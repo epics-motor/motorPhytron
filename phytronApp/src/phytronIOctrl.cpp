@@ -29,12 +29,9 @@ struct phytronIOparam
 
 static struct phytronIOparam g_aParameters[] =
 {
-  { false, false, asynParamInt32, "IN"      },
-  { true,  false, asynParamInt32, "OUT"     },
-  { true,  true,  asynParamInt32, "DIR"     },
-  { true,  false, asynParamOctet, "COMMAND" },
-  { false, false, asynParamOctet, "STATUS"  },
-  { false, false, asynParamOctet, "REPLY"   },
+  { false, false, asynParamInt32, "IN"  },
+  { true,  false, asynParamInt32, "OUT" },
+  { true,  true,  asynParamInt32, "DIR" },
 };
 
 /**
@@ -53,8 +50,8 @@ phytronIO::phytronIO(const char* szIOPortName, phytronController* pCtrl, phytron
 #if ASYN_VERSION < 4 || (ASYN_VERSION == 4 && ASYN_REVISION < 32)
                    ARRAY_SIZE(g_aParameters),
 #endif
-                   asynOctetMask | asynInt32Mask | asynDrvUserMask, // additional interfaces
-                   asynOctetMask | asynInt32Mask, // additional callback interfaces
+                   asynInt32Mask | asynDrvUserMask, // additional interfaces
+                   asynInt32Mask, // additional callback interfaces
                    ASYN_CANBLOCK, // asynFlags
                    1, // autoConnect
                    0, // default priority
@@ -68,8 +65,6 @@ phytronIO::phytronIO(const char* szIOPortName, phytronController* pCtrl, phytron
   , iInReason_(-1)
   , iOutReason_(-1)
   , iDirReason_(-1)
-  , iStatusReason_(-1)
-  , iReplyReason_(-1)
 {
   for (size_t i = 0; i < ARRAY_SIZE(g_aParameters); ++i)
   {
@@ -94,21 +89,6 @@ phytronIO::phytronIO(const char* szIOPortName, phytronController* pCtrl, phytron
       {
         iOutReason_ = iReason;
         setIntegerParam(iReason, iOut);
-      }
-      else if (strcmp(p->szAsynName, "DIR") == 0)
-      {
-        iDirReason_ = iReason;
-        setIntegerParam(iReason, 0);
-      }
-      else if (strcmp(p->szAsynName, "STATUS") == 0)
-      {
-        iStatusReason_ = iReason;
-        setStringParam(iReason, "");
-      }
-      else if (strcmp(p->szAsynName, "REPLY") == 0)
-      {
-        iReplyReason_ = iReason;
-        setStringParam(iReason, "");
       }
     }
   }
@@ -251,38 +231,6 @@ asynStatus phytronIO::writeInt32(asynUser* pasynUser, epicsInt32 iValue)
 handlewrite:
   if (iResult == asynSuccess)
     iResult = asynPortDriver::writeInt32(pasynUser, iValue);
-  return iResult;
-}
-
-asynStatus phytronIO::writeOctet(asynUser* pasynUser, const char* szValue, size_t maxChars, size_t* pnActual)
-{
-  asynStatus iResult(asynSuccess);
-  struct phytronIOparam* pParam(nullptr);
-  std::string sCmd(szValue, maxChars), sReply;
-  if (pasynUser->reason >= 0 && m_mapParameters.count(pasynUser->reason))
-    pParam = m_mapParameters[pasynUser->reason];
-  if (!pParam) // default handler for other asyn parameters
-    goto handlewrite;
-  if (!pParam->bWriteable || pParam->iAsynType != asynParamOctet)
-    return asynError;
-
-  iResult = phytronController::phyToAsyn(pCtrl_->sendPhytronCommand(sCmd, sReply, false));
-  if (iResult == asynSuccess)
-  {
-    if (iStatusReason_ >= 0)
-    {
-      if      (sReply.substr(0, 1) == "\x06") setStringParam(iStatusReason_, "ACK");
-      else if (sReply.substr(0, 1) == "\x15") setStringParam(iStatusReason_, "NAK");
-      else                                    setStringParam(iStatusReason_, "INVALID");
-    }
-    sReply.erase(0, 1);
-    if (iReplyReason_ >= 0)
-      setStringParam(iReplyReason_, sReply);
-  }
-
-handlewrite:
-  if (iResult == asynSuccess)
-    iResult = asynPortDriver::writeOctet(pasynUser, szValue, maxChars, pnActual);
   return iResult;
 }
 

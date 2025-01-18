@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--Saved on 2025-01-18 11:15:39 by dcy-->
+<display version="2.0.0">
+  <name>$(P):$(PORT) digital I/O</name>
+  <x>1020</x>
+  <y>281</y>
+  <width>190</width>
+  <height>50</height>
+  <background_color>
+    <color name="CF help" red="178" green="162" blue="178">
+    </color>
+  </background_color>
+  <grid_visible>false</grid_visible>
+  <widget type="rectangle" version="2.0.0">
+    <name>EDM activeRectangleClass</name>
+    <width>190</width>
+    <height>21</height>
+    <line_width>1</line_width>
+    <line_color>
+      <color name="grey-4" red="187" green="187" blue="187">
+      </color>
+    </line_color>
+    <background_color>
+      <color name="grey-4" red="187" green="187" blue="187">
+      </color>
+    </background_color>
+  </widget>
+  <widget type="multi_state_led" version="2.0.0">
+    <name>EDM activeRectangleClass</name>
+    <pv_name>=highestSeverity(`$(P):setDO$(PORT)`)</pv_name>
+    <y>21</y>
+    <width>77</width>
+    <height>23</height>
+    <square>true</square>
+    <border_alarm_sensitive>false</border_alarm_sensitive>
+    <states>
+      <state>
+        <value>0</value>
+        <label></label>
+        <color>
+          <color name="OK" red="0" green="255" blue="0">
+          </color>
+        </color>
+      </state>
+      <state>
+        <value>1</value>
+        <label></label>
+        <color>
+          <color name="MINOR" red="255" green="128" blue="0">
+          </color>
+        </color>
+      </state>
+      <state>
+        <value>2</value>
+        <label></label>
+        <color>
+          <color name="MAJOR" red="255" green="0" blue="0">
+          </color>
+        </color>
+      </state>
+      <state>
+        <value>3</value>
+        <label></label>
+        <color>
+          <color name="INVALID" red="255" green="0" blue="255">
+          </color>
+        </color>
+      </state>
+      <state>
+        <value>4</value>
+        <label></label>
+        <color>
+          <color name="DISCONNECTED" red="200" green="0" blue="200" alpha="200">
+          </color>
+        </color>
+      </state>
+    </states>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>EDM activeXTextDspClass_noedit</name>
+    <pv_name>$(P):setDO$(PORT).DESC</pv_name>
+    <x>2</x>
+    <y>2</y>
+    <width>89</width>
+    <height>14</height>
+    <font>
+      <font family="Liberation Sans" style="REGULAR" size="12.0">
+      </font>
+    </font>
+    <foreground_color>
+      <color name="black-14" red="0" green="0" blue="0">
+      </color>
+    </foreground_color>
+    <background_color>
+      <color name="grey-2" red="218" green="218" blue="218">
+      </color>
+    </background_color>
+    <transparent>true</transparent>
+    <show_units>false</show_units>
+    <vertical_alignment>1</vertical_alignment>
+  </widget>
+  <widget type="action_button" version="3.0.0">
+    <name>EDM activeMessageButtonClass</name>
+    <actions>
+      <action type="write_pv">
+        <pv_name>$(pv_name)</pv_name>
+        <value>1</value>
+        <description>PROC</description>
+      </action>
+    </actions>
+    <pv_name>$(P):setDO$(PORT).PROC</pv_name>
+    <text>PROC</text>
+    <x>145</x>
+    <y>2</y>
+    <width>35</width>
+    <height>14</height>
+    <font>
+      <font family="Liberation Sans" style="REGULAR" size="10.0">
+      </font>
+    </font>
+    <foreground_color>
+      <color name="black-14" red="0" green="0" blue="0">
+      </color>
+    </foreground_color>
+    <background_color>
+      <color name="grey-2" red="218" green="218" blue="218">
+      </color>
+    </background_color>
+  </widget>
+  <widget type="textentry" version="3.0.0">
+    <name>EDM activeXTextDspClass</name>
+    <pv_name>$(P):setDO$(PORT)</pv_name>
+    <x>2</x>
+    <y>21</y>
+    <width>75</width>
+    <height>21</height>
+    <font>
+      <font family="Liberation Sans" style="REGULAR" size="18.0">
+      </font>
+    </font>
+    <foreground_color>
+      <color name="black-14" red="0" green="0" blue="0">
+      </color>
+    </foreground_color>
+    <background_color>
+      <color name="grey-2" red="218" green="218" blue="218">
+      </color>
+    </background_color>
+    <show_units>false</show_units>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update DO</name>
+    <pv_name>$(P):rbkDO$(PORT)</pv_name>
+    <x>79</x>
+    <y>22</y>
+    <width>50</width>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Text Update DI</name>
+    <pv_name>$(P):rdDI$(PORT)</pv_name>
+    <x>139</x>
+    <y>22</y>
+    <width>50</width>
+  </widget>
+</display>

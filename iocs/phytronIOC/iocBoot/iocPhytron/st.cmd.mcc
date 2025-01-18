@@ -18,13 +18,19 @@ phytron_registerRecordDeviceDriver(pdbbase)
 #asynSetOption("testRemote", -1, "crtscts", "N")
 drvAsynIPPortConfigure("testRemote","192.168.167.116:22222",0,0,1)
 
+#eraseFile("device-comm.log")
+#asynSetTraceFile("testRemote", 0, "device-comm.log")
+#asynSetTraceMask("testRemote", 0, 0x2F) # error, device, filter, driver, warning, !flow
+#asynSetTraceIOMask("testRemote", 0, 2)
+#asynSetTraceInfoMask("testRemote", 0, 0x0F)
+
 #phytronCreateMCC(phytronPort, asynPort, address, movingPollPeriod, idlePollPeriod, timeout, do-not-reset
 phytronCreateMCC("phyMotionPort", "testRemote", 0, 10, 10, 1000)
 asynSetOption("phyMotionPort", 0, "fakeHomedEnable", "true")
 
 #phytronCreateAxis(phytronPort, module, axis)
-phytronCreateAxis("phyMotionPort", 0, 1)
-phytronCreateAxis("phyMotionPort", 0, 2)
+phytronCreateAxis("phyMotionPort", 1, 1)
+phytronCreateAxis("phyMotionPort", 1, 2)
 
 dbLoadTemplate "motor.substitutions.phytron"
 

@@ -9,23 +9,25 @@ include $(TOP)/configure/CONFIG
 #DB_OPT = YES
 
 ifdef MOTOR_PHYTRON
-DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_I1AM01.db
-DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_MCM01.db
-DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_motor.db
 DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_AIO.db
 DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_AIO_MCC.db
 DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_CMD.db
 DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_DIO.db
-DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_DIO_MCC.db
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_DIO_MCC1.db
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_I1AM01.db
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_MCC.db
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_MCM01.db
+DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_motor.db
 else
-DB_INSTALLS += $(MOTOR)/db/Phytron_I1AM01.db
-DB_INSTALLS += $(MOTOR)/db/Phytron_MCM01.db
-DB_INSTALLS += $(MOTOR)/db/Phytron_motor.db
 DB_INSTALLS += $(MOTOR)/db/Phytron_AIO.db
 DB_INSTALLS += $(MOTOR)/db/Phytron_AIO_MCC.db
 DB_INSTALLS += $(MOTOR)/db/Phytron_CMD.db
 DB_INSTALLS += $(MOTOR)/db/Phytron_DIO.db
-DB_INSTALLS += $(MOTOR)/db/Phytron_DIO_MCC.db
+DB_INSTALLS += $(MOTOR)/db/Phytron_DIO_MCC1.db
+DB_INSTALLS += $(MOTOR)/db/Phytron_I1AM01.db
+DB_INSTALLS += $(MOTOR)/db/Phytron_MCC.db
+DB_INSTALLS += $(MOTOR)/db/Phytron_MCM01.db
+DB_INSTALLS += $(MOTOR)/db/Phytron_motor.db
 endif
 
 #----------------------------------------------------

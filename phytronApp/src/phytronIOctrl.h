@@ -21,7 +21,6 @@ public:
   phytronIO(const char* szIOPortName, phytronController* pCtrl, IOTYPE iType, epicsUInt8 byCardNr, epicsUInt8 byChannel, epicsInt32 iIn, epicsInt32 iOut);
   asynStatus readInt32(asynUser* pasynUser, epicsInt32* piValue);
   asynStatus writeInt32(asynUser* pasynUser, epicsInt32 iValue);
-  asynStatus writeOctet(asynUser* pasynUser, const char* szValue, size_t maxChars, size_t* pnActual);
   void report(FILE* pFile, int iLevel);
 
   // I/O controller functions
