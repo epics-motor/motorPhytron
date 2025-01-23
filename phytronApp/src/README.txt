@@ -202,14 +202,15 @@ iocInit()
 =========
 Database:
 =========
-All 8 database files (Phytron_AIO.db, Phytron_AIO_MCC.db, Phytron_CMD.db,
+All 9 database files (Phytron_AIO.db, Phytron_AIO_MCC.db, Phytron_CMD.db,
 Phytron_DIO.db, Phytron_DIO_MCC1.db, Phytron_I1AM01.db, Phytron_MCM01.db,
-Phytron_motor.db) in $(MOTOR_ROOT)/motorApp/Db are expanded by
-motor.substitutions.phytron file in $(MOTOR_ROOT)/iocBoot/iocWithAsyn
+Phytron_motor.db, Phytron_motor2.db) in $(MOTOR_ROOT)/motorApp/Db are expanded
+by motor.substitutions.phytron file in $(MOTOR_ROOT)/iocBoot/iocWithAsyn
 
-For using an already configured motor axis, at least (Phytron_motor.db) must be
-used. To configure an Phytron axis, also (Phytron_I1AM01.db) is necessary.
-If you want to use phyMOTION controller functions, use (Phytron_MCM01.db).
+For using an already configured motor axis, at least (Phytron_motor.db or
+Phytron_motor2.db) must be used. To configure an Phytron axis, also
+(Phytron_I1AM01.db) is necessary. If you want to use phyMOTION controller
+functions, use (Phytron_MCM01.db).
 
 The analog I/O support needs the files (Phytron_AIO.db) for phyMOTION or
 (Phytron_AIO_MCC.db) for MCC-1/MCC-2 controllers. The digital I/O support needs
@@ -408,21 +409,21 @@ $(P)-RESET_ alternates between 0 and 1, so the monitor is posted on every reset
 and the axis REINIT_ record can trigger the initialization procedures.
 
 
-Motor Record - Phytron_motor.db:
-================================
-This database file is similar to (basic_asyn_motor.db), the differences are,
+Motor Record - Phytron_motor.db, Phytron_motor2.db:
+===================================================
+These database files are similar to (basic_asyn_motor.db), the differences are,
 - additional field for autosave support
   info(autosaveFields, "DVAL DIR VELO VBAS VMAX ACCL BDST BVEL BACC MRES ERES PREC EGU DHLM DLLM OFF")
 
 - additional required fields
   field(ERES,"$(ERES)")  - encoder resolution
-  field(UREV,"$(UREV)")  - EGU's per revolution
+  field(MRES,"$(MRES)")  - motor resolution (Phytron_motor.db only)
+  field(UREV,"$(UREV)")  - EGU's per revolution (Phytron_motor2.db only)
   field(VMAX,"$(VMAX)")  - maximum velocity
 
 - optional fields
   field(DTYP,"$(DTYP=asynMotor)")  - device type
   field(MDEL,"$(MDEL=)")           - monitor deadband
-  field(MRES,"$(MRES=)")           - motor resolution
   field(OFF, "$(OFF=0)")           - offset
   field(RDBD,"$(RDBD=0)")          - retry dead band
   field(RTRY,"$(RTRY=0)")          - max. retry count
@@ -485,7 +486,7 @@ controller, or not applicable
 
 P01 (Type of movement) - Set to hardware limit switches (1)
 
-P02 (Units of movemnt) - Always set to step - unit conversion is done within
+P02 (Units of movement) - Always set to step - unit conversion is done within
 the motor record.
 
 P03 (Conversion factor for the thread) - Always set to 1 - unit conversion is 

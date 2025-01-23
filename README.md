@@ -10,4 +10,6 @@ motorPhytron can also be built outside of motor by copying it's ``EXAMPLE_RELEAS
 
 motorPhytron contains an example IOC that is built if ``CONFIG_SITE.local`` sets ``BUILD_IOCS = YES``.  The example IOC can be built outside of driver module.
 
+See more documentation in [phytronApp/src/README.txt](phytronApp/src/README.txt).
+
 SPDX-License-Identifier: EPICS
