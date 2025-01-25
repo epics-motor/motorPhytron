@@ -18,7 +18,6 @@ DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_I1AM01.db
 DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_MCC.db
 DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_MCM01.db
 DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_motor.db
-DB_INSTALLS += $(MOTOR_PHYTRON)/db/Phytron_motor2.db
 else
 DB_INSTALLS += $(MOTOR)/db/Phytron_AIO.db
 DB_INSTALLS += $(MOTOR)/db/Phytron_AIO_MCC.db
@@ -29,7 +28,6 @@ DB_INSTALLS += $(MOTOR)/db/Phytron_I1AM01.db
 DB_INSTALLS += $(MOTOR)/db/Phytron_MCC.db
 DB_INSTALLS += $(MOTOR)/db/Phytron_MCM01.db
 DB_INSTALLS += $(MOTOR)/db/Phytron_motor.db
-DB_INSTALLS += $(MOTOR)/db/Phytron_motor2.db
 endif
 
 #----------------------------------------------------
