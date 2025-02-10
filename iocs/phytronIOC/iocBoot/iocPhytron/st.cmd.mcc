@@ -25,7 +25,7 @@ drvAsynIPPortConfigure("testRemote","192.168.167.116:22222",0,0,1)
 #asynSetTraceInfoMask("testRemote", 0, 0x0F)
 
 #phytronCreateMCC(phytronPort, asynPort, address, movingPollPeriod, idlePollPeriod, timeout, do-not-reset
-phytronCreateMCC("phyMotionPort", "testRemote", 0, 10, 10, 1000)
+phytronCreateMCC("phyMotionPort", "testRemote", 0, 1000, 1000, 1000, 1)
 asynSetOption("phyMotionPort", 0, "fakeHomedEnable", "true")
 
 #phytronCreateAxis(phytronPort, module, axis)

@@ -117,6 +117,7 @@ phytronController::phytronController(phytronController::TYPE iCtrlType, const ch
   , iDefaultPollMethod_(pollMethodSerial)
   , fake_homed_enable_(false)
   , allow_exit_on_error_(false)
+  , statusResetTime_(0.0)
 {
   asynStatus status;
   static const char *functionName = "phytronController::phytronController";
@@ -590,6 +591,7 @@ asynStatus phytronController::readOption(asynUser* pasynUser, const char* szKey,
   if (szKey && szValue) {
     *szValue = '\0';
     if (epicsStrCaseCmp(szKey, "pollMethod") == 0) {
+      // polling methods: serial, axis-parallel or controller-parallel; axis may have "default"
       const char* szMethod;
       phytronAxis* pAxis(getAxis(pasynUser));
       enum pollMethod iMethod(pAxis ? pAxis->iPollMethod_ : iDefaultPollMethod_);
@@ -603,11 +605,30 @@ asynStatus phytronController::readOption(asynUser* pasynUser, const char* szKey,
       snprintf(szValue, iMaxChars, "%d/%s", static_cast<int>(iMethod), szMethod);
       return asynSuccess;
     }
+
+    if (epicsStrCaseCmp(szKey, "clearAxisStatus") == 0) {
+      // "clear axis status" before move
+      phytronAxis* pAxis(getAxis(pasynUser));
+      float fTime(fabs(pAxis ? pAxis->statusResetTime_ : statusResetTime_));
+      if (!isfinite(fTime))
+        snprintf(szValue, iMaxChars, "default");
+      else if (fTime >= 0.001)
+        snprintf(szValue, iMaxChars, "%g", fTime);
+      else if (fTime > 0)
+        snprintf(szValue, iMaxChars, "on");
+      else
+        snprintf(szValue, iMaxChars, "off");
+      return asynSuccess;
+    }
+
     if (epicsStrCaseCmp(szKey, "fakeHomedEnable") == 0) {
+      // configure "fake homed" bit
       snprintf(szValue, iMaxChars, "%s", fake_homed_enable_ ? "true" : "false");
       return asynSuccess;
     }
+
     if (epicsStrCaseCmp(szKey, "fakeHomedCache") == 0) {
+      // show "fake homed" cache
       int iLen(0);
       szValue[0] = '\0';
       for (int i = 0; i < ARRAY_SIZE(fake_homed_cache_); ++i) {
@@ -619,7 +640,9 @@ asynStatus phytronController::readOption(asynUser* pasynUser, const char* szKey,
       }
       return asynSuccess;
     }
+
     if (epicsStrCaseCmp(szKey, "allowExitOnError") == 0) {
+      // configure "allow exit on error": after detection of this, the IOC exists and should be restarted by procServ
       snprintf(szValue, iMaxChars, "%s", allow_exit_on_error_ ? "true" : "false");
       return asynSuccess;
     }
@@ -660,7 +683,7 @@ asynStatus phytronController::writeOption(asynUser* pasynUser, const char* szKey
     if (epicsParseInt64(szValue, &iTmp, 0, NULL) == 0) {
       if (iTmp < (pAxis ? static_cast<epicsInt64>(pollMethodDefault) : static_cast<epicsInt64>(pollMethodSerial)) ||
           iTmp > static_cast<epicsInt64>(pollMethodControllerParallel))
-        goto wrongValue;
+        goto wrongValue_parallel;
       iMethod = static_cast<pollMethod>(iTmp);
     } else {
       while (isspace(*szValue)) ++szValue;
@@ -685,7 +708,7 @@ asynStatus phytronController::writeOption(asynUser* pasynUser, const char* szKey
                (iLen == 19 && !epicsStrnCaseCmp(szValue, "controller-parallel", 19)))
         iMethod = pollMethodControllerParallel;
       else
-        goto wrongValue;
+        goto wrongValue_parallel;
     }
     if (iCtrlType_ != TYPE_PHYMOTION && iMethod != pollMethodDefault && iMethod != pollMethodSerial)
     {
@@ -700,7 +723,44 @@ asynStatus phytronController::writeOption(asynUser* pasynUser, const char* szKey
     return asynSuccess;
   }
 
+  if (epicsStrCaseCmp(szKey, "clearAxisStatus") == 0) {
+    // configure "clear axis status" before move
+    float fTime(0.), *pfTime(&statusResetTime_);
+    getAddress(pasynUser, &iAxisNo);
+    if (iAxisNo > 0) {
+      pAxis = getAxis(iAxisNo);
+      if (!pAxis) {
+        epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
+                      "phytronController:writeOption(%s, %s) wrong axis", szKey, szValue);
+        return asynError;
+      }
+      pfTime = &pAxis->statusResetTime_;
+    }
+
+    if (epicsParseFloat(szValue, &fTime, NULL) == 0 && fTime >= 0. && fTime <= 10.)
+      ;
+    else if (pAxis && epicsStrCaseCmp(szValue, "default") == 0)
+      fTime = epicsINF;
+    else if (epicsStrCaseCmp(szValue, "t") == 0 || epicsStrCaseCmp(szValue, "true") == 0 ||
+             epicsStrCaseCmp(szValue, "y") == 0 || epicsStrCaseCmp(szValue, "yes") == 0 ||
+             epicsStrCaseCmp(szValue, "on") == 0)
+      fTime = 0.000001;
+    else if (epicsStrCaseCmp(szValue, "f") == 0 || epicsStrCaseCmp(szValue, "false") == 0 ||
+             epicsStrCaseCmp(szValue, "n") == 0 || epicsStrCaseCmp(szValue, "no") == 0 ||
+             epicsStrCaseCmp(szValue, "off") == 0)
+      fTime = 0.;
+    else {
+      epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
+                    "phytronController:writeOption(%s, %s) wrong value - allowed is seconds (0..10) or boolean%s",
+                    szKey, szValue, pAxis ? " or \"default\"" : "");
+      goto wrongValue;
+    }
+    *pfTime = (*pfTime <= 0.) ? -fTime : fTime;
+    return asynSuccess;
+  }
+
   if (epicsStrCaseCmp(szKey, "fakeHomedEnable") == 0) {
+    // configure "fake homed" bit: ORed real homed status with autosave position
     if (epicsParseInt64(szValue, &iTmp, 0, NULL) == 0)
       fake_homed_enable_ = (iTmp != 0);
     else if (epicsStrCaseCmp(szValue, "t") == 0 || epicsStrCaseCmp(szValue, "true") == 0 ||
@@ -717,11 +777,12 @@ asynStatus phytronController::writeOption(asynUser* pasynUser, const char* szKey
              epicsStrCaseCmp(szValue, "off") == 0)
       fake_homed_enable_ = false;
     else
-      goto wrongValue;
+      goto wrongValue_bool;
     return asynSuccess;
   }
 
   if (epicsStrCaseCmp(szKey, "allowExitOnError") == 0) {
+    // configure "allow exit on error": after detection of this, the IOC exists and should be restarted by procServ
     if (epicsParseInt64(szValue, &iTmp, 0, NULL) == 0)
       allow_exit_on_error_ = (iTmp != 0);
     else if (epicsStrCaseCmp(szValue, "t") == 0 || epicsStrCaseCmp(szValue, "true") == 0 ||
@@ -733,17 +794,24 @@ asynStatus phytronController::writeOption(asynUser* pasynUser, const char* szKey
              epicsStrCaseCmp(szValue, "off") == 0)
       allow_exit_on_error_ = false;
     else
-      goto wrongValue;
+      goto wrongValue_bool;
     return asynSuccess;
   }
 
 finish:
   return asynMotorController::writeOption(pasynUser, szKey, szValue);
 
-wrongValue:
+wrongValue_parallel:
   epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
                 "phytronController:writeOption(%s, %s) wrong value - allowed are %sserial,axis-parallel,%sparallel",
                 szKey, szValue, pAxis ? "default," : "", pAxis ? "controller-" : "");
+  goto wrongValue;
+
+wrongValue_bool:
+  epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
+                "phytronController:writeOption(%s, %s) wrong value - allowed is boolean", szKey, szValue);
+
+wrongValue:
   return asynError;
 }
 
@@ -1278,6 +1346,7 @@ phytronAxis::phytronAxis(phytronController *pC, int iAxisNo)
   , brakeReleased_(0)
   , iPollMethod_(pollMethodDefault)
   , homeState_(0)
+  , statusResetTime_(epicsINF)
 {
   //Controller always supports encoder. Encoder enable/disable is set through UEIP
   setIntegerParam(pC_->motorStatusHasEncoder_, 1);
@@ -1321,8 +1390,22 @@ void phytronAxis::report(FILE *fp, int level)
  */
 phytronStatus phytronAxis::clearAxisError(std::vector<std::string>* pCmdList)
 {
+  float fTime(statusResetTime_);
   if (pC_->iCtrlType_ != phytronController::TYPE_PHYMOTION )
     return phytronSuccess; // not supported
+  if (!isfinite(fTime) && fTime > 0.)
+    fTime = fabs(pC_->statusResetTime_);
+  if (fTime <= 0.0)
+    return phytronSuccess; // not needed
+  if (fTime > 10.)
+    fTime = 10.;
+  statusResetTime_ = -statusResetTime_;
+  if (fTime >= 0.001) // reset status and wait
+  {
+    phytronStatus iResult(pC_->sendPhytronCommand(std::string("SEC") + &axisModuleNo_[1]));
+    epicsThreadSleep(fTime);
+    return iResult;
+  }
   if (pCmdList)
   {
     pCmdList->push_back(std::string("SEC") + &axisModuleNo_[1]);
@@ -1983,7 +2066,9 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
     }
   }
   else
-    bResult = !(iAxisStatus & 0xF800); // axis internal/limit-switch/power-stage/SFI/ENDAT error
+    bResult = !(iAxisStatus & 0xE800); // axis internal/power-stage/SFI/ENDAT error
+  if ((iAxisStatus & 0x1000) != 0 && statusResetTime_ < 0.) // axis limit-switch error
+    statusResetTime_ = -statusResetTime_;
   setIntegerParam(pC_->motorStatusHighLimit_, iHighLimit);
   setIntegerParam(pC_->motorStatusLowLimit_,  iLowLimit);
   setIntegerParam(pC_->motorStatusAtHome_, (iAxisStatus & 0x40)/0x40);

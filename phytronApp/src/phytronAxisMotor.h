@@ -145,6 +145,7 @@ private:
   int brakeReleased_;           ///< state of brake
   enum pollMethod iPollMethod_; ///< individual poll method for this axis
   int homeState_;               ///< state machine for work around homing to limit switches
+  float statusResetTime_;       ///< error state flag for SEC command: 0=off, <0: configured but not needed, >0: need status reset; 0s<n<0.001s=no wait, 0.001s<n<10s wait time
 
 friend class phytronController;
 };
@@ -238,6 +239,7 @@ private:
   bool allow_exit_on_error_;           ///< allow exit(1) on error
   std::string sLastSUI_;               ///< last response to SUI command (MCC only)
   std::string sCtrlType_;              ///< controller type
+  float statusResetTime_;              ///< error state flag for SEC command: 0=off, <0: configured but not needed, >0: need status reset; 0s<n<0.001s=no wait, 0.001s<n<10s wait time
 
   static void epicsInithookFunction(initHookState iState);
 

@@ -21,6 +21,7 @@ drvAsynIPPortConfigure("testRemote","10.5.1.181:22222",0,0,1)
 phytronCreateController ("phyMotionPort", "testRemote", 10, 10, 1000)
 asynSetOption("phyMotionPort", 0, "pollMethod", "parallel")
 asynSetOption("phyMotionPort", 0, "fakeHomedEnable", "true")
+asynSetOption("phyMotionPort", 0, "clearAxisStatus", "true")
 
 #phytronCreateAxis(phytronPort, module, axis)
 phytronCreateAxis("phyMotionPort", 1, 1)
