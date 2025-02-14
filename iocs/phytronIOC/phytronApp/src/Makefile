@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: EPICS
 TOP=../..
 
 include $(TOP)/configure/CONFIG
@@ -22,6 +23,10 @@ phytron_DBD += base.dbd
 #ifdef ASYN
 phytron_DBD += asyn.dbd
 phytron_DBD += drvAsynIPPort.dbd
+phytron_DBD += drvAsynSerialPort.dbd
+#endif
+#ifdef AUTOSAVE
+phytron_DBD += asSupport.dbd
 #endif
 phytron_DBD += motorSupport.dbd
 phytron_DBD += phytronSupport.dbd
@@ -31,6 +36,9 @@ phytron_LIBS += phytronAxisMotor
 phytron_LIBS += motor
 #ifdef ASYN
 phytron_LIBS += asyn
+#endif
+#ifdef AUTOSAVE
+phytron_LIBS += autosave
 #endif
 #ifdef SNCSEQ
 phytron_LIBS += seq pv

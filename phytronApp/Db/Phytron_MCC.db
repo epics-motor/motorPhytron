@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: EPICS
 ################################################################################
-# This database contains records corresponding to additional parameters (not 
-# handled by the motor record) of the I1AM01 motion controller.
+# This database contains records corresponding to additional axis parameters
+# (not handled by the motor record) of the MCC-1/MCC-2 motion controller.
 #
 # Output records, used to set the parameter values have a suffix _SET, readback
 # records, used to read the parameters have a suffix _GET.
@@ -32,7 +32,7 @@ record(bo, "$(P)$(M)-RESET-STATUS")
 
 ################################################################################
 # Initialization of _SET records
-# REINIT_ is triggered every time MCM01 module is reset
+# REINIT_ is triggered every time the controller is reset
 ################################################################################
 record(seq, "$(P)$(M)-INIT-AXIS-1")
 {
@@ -80,7 +80,7 @@ record(seq, "$(P)$(M)-INIT-AXIS-2")
     field(LNK8, "$(P)$(M)-PS-MONITOR_SET PP")
     field(DOL8, "$(PS_MON)")
     field(LNK9, "$(P)$(M)-ENC-DIR_SET PP")
-    field(DOL9, "$(ENC_DIR)")  
+    field(DOL9, "$(ENC_DIR)")
     field(SELM, "All")
 }
 
@@ -94,8 +94,8 @@ record(seq, "$(P)$(M)-REINIT_")
 }
 
 ################################################################################
-# STATUS_ record reads axis status from the device, the two mbbiDirect records 
-# are used to parse the status bits. STATUS_ uses I/O Intr SCAN, because the 
+# STATUS_ record reads axis status from the device, the two mbbiDirect records
+# are used to parse the status bits. STATUS_ uses I/O Intr SCAN, because the
 # status value is read in phytronAxis::poll
 # SHFT field is used, therefore DTYP of mbbiDirect must be set to Raw Soft Channel.
 ################################################################################
@@ -355,7 +355,7 @@ record(calc, "$(P)$(M)-AXIS-ERR")
 
 ################################################################################
 # Homing procedure type
-# KEEP IN MIND PARAMETERS THAT HOMING FINISHES BY MOVING FOR AND ADDITIONAL 
+# KEEP IN MIND PARAMETERS THAT HOMING FINISHES BY MOVING FOR AND ADDITIONAL
 # OFFSET, DEFINED IN PARAMETERS P11 AND P12
 ################################################################################
 record(mbbo, "$(P)$(M)-HOMING_SET")
@@ -404,8 +404,8 @@ record(mbbi, "$(P)$(M)-HOMING_GET")
 }
 
 ################################################################################
-# P01: Controller provides the following modes of movement, however software 
-# limits are always monitored by the motor record, so only modes 0 and 1 are 
+# P01: Controller provides the following modes of movement, however software
+# limits are always monitored by the motor record, so only modes 0 and 1 are
 # exposed to the user
 # 0: Rotational movement
 # 1: Hardware limit switches are monitored
@@ -418,11 +418,11 @@ record(mbbo, "$(P)$(M)-MOVE-TYP_SET")
     field(DTYP, "asynInt32")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))AXIS_MODE")
     field(ZRST, "Rotational")
-    field(ZRVL, "0")        
-    field(ONST, "HW switch") 
-    field(ONVL, "1")            
-    field(FLNK, "$(P)$(M)-MOVE-TYP_GET")  
-    info(autosaveFields, "VAL") 
+    field(ZRVL, "0")
+    field(ONST, "HW switch")
+    field(ONVL, "1")
+    field(FLNK, "$(P)$(M)-MOVE-TYP_GET")
+    info(autosaveFields, "VAL")
 }
 
 record(mbbi, "$(P)$(M)-MOVE-TYP_GET")
@@ -431,14 +431,14 @@ record(mbbi, "$(P)$(M)-MOVE-TYP_GET")
     field(DTYP, "asynInt32")
     field(INP, "@asyn($(PORT), $(ADDR), $(TIMEOUT))AXIS_MODE")
     field(ZRST, "Rotational")
-    field(ZRVL, "0")    
+    field(ZRVL, "0")
     field(ONST, "HW switch")
-    field(ONVL, "1")          
+    field(ONVL, "1")
     field(PINI, "YES")
 }
 
 ###############################################################################
-# P11: Mechanical zero point offset for limit switch direction + (away from 
+# P11: Mechanical zero point offset for limit switch direction + (away from
 # LIMIT+ switch, towards LIMIT- switch)
 ################################################################################
 record(ao, "$(P)$(M)-POS-OFFSET_SET")
@@ -448,7 +448,7 @@ record(ao, "$(P)$(M)-POS-OFFSET_SET")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))MOP_POS")
     field(FLNK, "$(P)$(M)-POS-OFFSET_GET")
     info(autosaveFields, "VAL")
-    
+
 }
 
 record(ai, "$(P)$(M)-POS-OFFSET_GET")
@@ -460,7 +460,7 @@ record(ai, "$(P)$(M)-POS-OFFSET_GET")
 }
 
 ################################################################################
-# P12: Mechanical zero point offset for limit switch direction - (away from 
+# P12: Mechanical zero point offset for limit switch direction - (away from
 # LIMIT- switch, towards LIMIT+ switch)
 ################################################################################
 record(ao, "$(P)$(M)-NEG-OFFSET_SET")
@@ -525,7 +525,7 @@ record(ai, "$(P)$(M)-POS-TIMEOUT_GET")
 }
 
 ################################################################################
-# P17: Defines when to use boost current (P42) 
+# P17: Defines when to use boost current (P42)
 ################################################################################
 record(mbbo, "$(P)$(M)-BOOST_SET")
 {
@@ -557,70 +557,9 @@ record(mbbi, "$(P)$(M)-BOOST_GET")
 }
 
 ################################################################################
-# P26: Encoder data transfer rate (ONLY FOR SSI)
-################################################################################
-record(mbbo, "$(P)$(M)-ENC-RATE_SET")
-{
-    field(DESC, "Encoder rate")
-    field(DTYP, "asynInt32")
-    field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))ENC_RATE")
-    field(ZRVL, "1")
-    field(ZRST, "100 kHz")
-    field(ONVL, "2")
-    field(ONST, "200 kHz")
-    field(TWVL, "3")
-    field(TWST, "300 kHz")
-    field(THVL, "4")
-    field(THST, "400 kHz")
-    field(FRVL, "5")
-    field(FRST, "500 kHz")
-    field(FVVL, "6")
-    field(FVST, "600 kHz")
-    field(SXVL, "7")
-    field(SXST, "700 kHz")
-    field(SVVL, "8")
-    field(SVST, "800 kHz")
-    field(EIVL, "9")
-    field(EIST, "900 kHz")
-    field(NIVL, "10")
-    field(NIST, "1000 kHz")
-    field(FLNK, "$(P)$(M)-ENC-RATE_GET")
-    info(autosaveFields, "VAL")
-}
-
-record(mbbi, "$(P)$(M)-ENC-RATE_GET")
-{
-    field(DESC, "Encoder rate")
-    field(DTYP, "asynInt32")
-    field(INP, "@asyn($(PORT), $(ADDR), $(TIMEOUT))ENC_RATE")
-    field(ZRVL, "1")
-    field(ZRST, "100 kHz")
-    field(ONVL, "2")
-    field(ONST, "200 kHz")
-    field(TWVL, "3")
-    field(TWST, "300 kHz")
-    field(THVL, "4")
-    field(THST, "400 kHz")
-    field(FRVL, "5")
-    field(FRST, "500 kHz")
-    field(FVVL, "6")
-    field(FVST, "600 kHz")
-    field(SXVL, "7")
-    field(SXST, "700 kHz")
-    field(SVVL, "8")
-    field(SVST, "800 kHz")
-    field(EIVL, "9")
-    field(EIST, "900 kHz")
-    field(NIVL, "10")
-    field(NIST, "1000 kHz")
-    field(PINI, "YES")
-}
-
-################################################################################
 # P27: Limit switch type
 # NCC: Normally closed contact
 # NOC: Normally open contact
-# STRING FIELDS ARE OF THE FORM: LIMIT-/CENTER/LIMIT+
 ################################################################################
 record(mbbo, "$(P)$(M)-SWITCH-TYP_SET")
 {
@@ -628,21 +567,9 @@ record(mbbo, "$(P)$(M)-SWITCH-TYP_SET")
     field(DTYP, "asynInt32")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))SWITCH_TYP")
     field(ZRVL, "0")
-    field(ZRST, "NCC/NCC/NCC")
-    field(ONVL, "0")
-    field(ONST, "NCC/NCC/NOC")
-    field(TWVL, "2")
-    field(TWST, "NOC/NCC/NCC")
-    field(THVL, "3")
-    field(THST, "NOC/NCC/NOC")
-    field(FRVL, "4")
-    field(FRST, "NCC/NOC/NCC")
-    field(FVVL, "5")
-    field(FVST, "NCC/NOC/NOC")
-    field(SXVL, "6")
-    field(SXST, "NOC/NOC/NCC")
-    field(SVVL, "7")
-    field(SVST, "NOC/NOC/NOC")
+    field(ZRST, "NCC")
+    field(ONVL, "1")
+    field(ONST, "NOC")
     field(FLNK, "$(P)$(M)-SWITCH-TYP_GET")
     info(autosaveFields, "VAL")
 }
@@ -653,21 +580,9 @@ record(mbbi, "$(P)$(M)-SWITCH-TYP_GET")
     field(DTYP, "asynInt32")
     field(INP, "@asyn($(PORT), $(ADDR), $(TIMEOUT))SWITCH_TYP")
     field(ZRVL, "0")
-    field(ZRST, "NCC/NCC/NCC")
-    field(ONVL, "0")
-    field(ONST, "NCC/NCC/NOC")
-    field(TWVL, "2")
-    field(TWST, "NOC/NCC/NCC")
-    field(THVL, "3")
-    field(THST, "NOC/NCC/NOC")
-    field(FRVL, "4")
-    field(FRST, "NCC/NOC/NCC")
-    field(FVVL, "5")
-    field(FVST, "NCC/NOC/NOC")
-    field(SXVL, "6")
-    field(SXST, "NOC/NOC/NCC")
-    field(SVVL, "7")
-    field(SVST, "NOC/NOC/NOC")
+    field(ZRST, "NCC")
+    field(ONVL, "1")
+    field(ONST, "NOC")
     field(PINI, "YES")
 }
 
@@ -700,19 +615,9 @@ record(bi, "$(P)$(M)-PWR-STAGE-MODE_GET")
 ################################################################################
 # P34: Encoder type:
 # 0: No encoder
-# 1: Incremental 5.0V
-# 2: Incremental 5.5V
-# 3: SSI Binary code 5.0V
-# 4: SSI Binary code 5.5V
-# 5: SSI Gray code 5.0V
-# 6: SSI Gray code 5.5V
-# 7: EnDat 5.0V
-# 8: EnDat 5.5V
-# 9: resolver
-# 10: LVDT 4-wire
-# 11: LVDT 5/6-wire
-# 12: BiSS 5.0 V
-# 13: BiSS 24.0 V
+# 1: Incremental
+# 2: SSI Binary code
+# 3: SSI Gray code
 
 ################################################################################
 record(mbbo, "$(P)$(M)-ENC-TYP_SET")
@@ -722,32 +627,12 @@ record(mbbo, "$(P)$(M)-ENC-TYP_SET")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))ENCODER_TYP")
     field(ZRST, "No encoder")
     field(ZRVL, "0")
-    field(ONST, "Incremental 5.0V")
+    field(ONST, "Incremental")
     field(ONVL, "1")
-    field(TWST, "Incremental 5.5V")
+    field(TWST, "SSI Binary")
     field(TWVL, "2")
-    field(THST, "SSI Binary 5.0V")
+    field(THST, "SSI Gray")
     field(THVL, "3")
-    field(FRST, "SSI Binary 5.5V")
-    field(FRVL, "4")
-    field(FVST, "SSI Gray 5.0V")
-    field(FVVL, "5")
-    field(SXST, "SSI Gray 5.5V")
-    field(SXVL, "6")
-    field(SVST, "EnDat 5.0V")
-    field(SVVL, "7")
-    field(EIST, "EnDat 5.5V")
-    field(EIVL, "8")
-    field(NIST, "resolver")
-    field(NIVL, "9")
-    field(TEST, "LVDT 4-wire")
-    field(TEVL, "10")
-    field(ELST, "LVDT 5/6-wire")
-    field(ELVL, "11")
-    field(TVST, "BiSS 5.0 V")
-    field(TVVL, "12")
-    field(TTST, "BiSS 24.0 V")
-    field(TTVL, "13")
     field(FLNK, "$(P)$(M)-ENC-TYP_GET")
     info(autosaveFields, "VAL")
 }
@@ -759,37 +644,17 @@ record(mbbi, "$(P)$(M)-ENC-TYP_GET")
     field(INP, "@asyn($(PORT), $(ADDR), $(TIMEOUT))ENCODER_TYP")
     field(ZRST, "No encoder")
     field(ZRVL, "0")
-    field(ONST, "Incremental 5.0V")
+    field(ONST, "Incremental")
     field(ONVL, "1")
-    field(TWST, "Incremental 5.5V")
+    field(TWST, "SSI Binary")
     field(TWVL, "2")
-    field(THST, "SSI Binary 5.0V")
+    field(THST, "SSI Gray")
     field(THVL, "3")
-    field(FRST, "SSI Binary 5.5V")
-    field(FRVL, "4")
-    field(FVST, "SSI Gray 5.0V")
-    field(FVVL, "5")
-    field(SXST, "SSI Gray 5.5V")
-    field(SXVL, "6")
-    field(SVST, "EnDat 5.0V")
-    field(SVVL, "7")
-    field(EIST, "EnDat 5.5V")
-    field(EIVL, "8")
-    field(NIST, "resolver")
-    field(NIVL, "9")
-    field(TEST, "LVDT 4-wire")
-    field(TEVL, "10")
-    field(ELST, "LVDT 5/6-wire")
-    field(ELVL, "11")
-    field(TVST, "BiSS 5.0 V")
-    field(TVVL, "12")
-    field(TTST, "BiSS 24.0 V")
-    field(TTVL, "13")
     field(PINI, "YES")
 }
 
 ################################################################################
-# P35: SSI and EnDat encoder resolution in bits. From 0b to 48b.
+# P35: SSI encoder resolution in bits. From 0b to 31b.
 # 0b - the controller uses the resolution which is read from the connected instrument
 ################################################################################
 record(ao, "$(P)$(M)-ENC-RES_SET")
@@ -798,7 +663,7 @@ record(ao, "$(P)$(M)-ENC-RES_SET")
     field(DTYP, "asynInt32")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))ENC_RESOLUTION")
     field(EGU, "b")
-    field(HOPR, "48")
+    field(HOPR, "31")
     field(LOPR, "0")
     field(FLNK, "$(P)$(M)-ENC-RES_GET")#
     info(autosaveFields, "VAL")
@@ -810,7 +675,7 @@ record(ai, "$(P)$(M)-ENC-RES_GET")
     field(DTYP, "asynInt32")
     field(INP, "@asyn($(PORT), $(ADDR), $(TIMEOUT))ENC_RESOLUTION")
     field(EGU, "b")
-    field(HOPR, "48")
+    field(HOPR, "31")
     field(LOPR, "0")
     field(PINI, "YES")
 }
@@ -849,7 +714,7 @@ record(bi, "$(P)$(M)-ENC-FUNC_GET")
 ################################################################################
 record(ao, "$(P)$(M)-ENC-SFI_SET")
 {
-    field(DESC, "SFI tolerrance")
+    field(DESC, "SFI tolerance")
     field(DTYP, "asynInt32")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))ENC_SFI_WIDTH")
     field(FLNK, "$(P)$(M)-ENC-SFI_GET")
@@ -858,7 +723,7 @@ record(ao, "$(P)$(M)-ENC-SFI_SET")
 
 record(ai, "$(P)$(M)-ENC-SFI_GET")
 {
-    field(DESC, "SFI tolerrance")
+    field(DESC, "SFI tolerance")
     field(DTYP, "asynInt32")
     field(INP, "@asyn($(PORT), $(ADDR), $(TIMEOUT))ENC_SFI_WIDTH")
     field(PINI, "YES")
@@ -1028,29 +893,21 @@ record(mbbo, "$(P)$(M)-STEP-RES_SET")
     field(DTYP, "asynInt32")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))STEP_RES")
     field(ZRST, "1")
-    field(ZRVL, "0")
+    field(ZRVL, "1")
     field(ONST, "1/2")
-    field(ONVL, "1")
-    field(TWST, "1/2.5")
-    field(TWVL, "2")
-    field(THST, "1/4")
-    field(THVL, "3")
-    field(FRST, "1/5")
-    field(FRVL, "4")
-    field(FVST, "1/8")
-    field(FVVL, "5")
-    field(SXST, "1/10")
-    field(SXVL, "6")
-    field(SVST, "1/16")
-    field(SVVL, "7")
-    field(EIST, "1/20")
-    field(EIVL, "8")
-    field(NIST, "1/32")
-    field(NIVL, "9")
-    field(TEST, "1/64")
-    field(TEVL, "10")
-    field(ELST, "1/128")
-    field(ELVL, "11")
+    field(ONVL, "2")
+    field(TWST, "1/4")
+    field(TWVL, "4")
+    field(THST, "1/8")
+    field(THVL, "8")
+    field(FRST, "1/10")
+    field(FRVL, "10")
+    field(FVST, "1/16")
+    field(FVVL, "16")
+    field(SXST, "1/128")
+    field(SXVL, "128")
+    field(SVST, "1/256")
+    field(SVVL, "256")
     field(FLNK, "$(P)$(M)-STEP-RES_GET")
     info(autosaveFields, "VAL")
 }
@@ -1061,29 +918,21 @@ record(mbbi, "$(P)$(M)-STEP-RES_GET")
     field(DTYP, "asynInt32")
     field(INP, "@asyn($(PORT), $(ADDR), $(TIMEOUT))STEP_RES")
     field(ZRST, "1")
-    field(ZRVL, "0")
+    field(ZRVL, "1")
     field(ONST, "1/2")
-    field(ONVL, "1")
-    field(TWST, "1/2.5")
-    field(TWVL, "2")
-    field(THST, "1/4")
-    field(THVL, "3")
-    field(FRST, "1/5")
-    field(FRVL, "4")
-    field(FVST, "1/8")
-    field(FVVL, "5")
-    field(SXST, "1/10")
-    field(SXVL, "6")
-    field(SVST, "1/16")
-    field(SVVL, "7")
-    field(EIST, "1/20")
-    field(EIVL, "8")
-    field(NIST, "1/32")
-    field(NIVL, "9")
-    field(TEST, "1/64")
-    field(TEVL, "10")
-    field(ELST, "1/128")
-    field(ELVL, "11")
+    field(ONVL, "2")
+    field(TWST, "1/4")
+    field(TWVL, "4")
+    field(THST, "1/8")
+    field(THVL, "8")
+    field(FRST, "1/10")
+    field(FRVL, "10")
+    field(FVST, "1/16")
+    field(FVVL, "16")
+    field(SXST, "1/128")
+    field(SXVL, "128")
+    field(SVST, "1/256")
+    field(SVVL, "256")
     field(PINI, "YES")
 }
 
@@ -1099,44 +948,6 @@ record(ai, "$(P)$(M)-PS-TEMPERATURE")
     field(SCAN, "$(SCAN)")
     field(PREC, 1)
     field(PINI, "YES")
-}
-
-################################################################################
-# P53: Power stage monitoring
-################################################################################
-record(bo, "$(P)$(M)-PS-MONITOR_SET")
-{
-    field(DESC, "Power stage monitor")
-    field(DTYP, "asynInt32")
-    field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))PS_MONITOR")
-    field(ZNAM, "OFF")
-    field(ONAM, "ON")
-    field(FLNK, "$(P)$(M)-PS-MONITOR_GET")
-    info(autosaveFields, "VAL")
-}
-
-record(bi, "$(P)$(M)-PS-MONITOR_GET")
-{
-    field(DESC, "Power stage monitor")
-    field(DTYP, "asynInt32")
-    field(INP, "@asyn($(PORT), $(ADDR), $(TIMEOUT))PS_MONITOR")
-    field(ZNAM, "OFF")
-    field(ONAM, "ON")
-    field(PINI, "YES")
-}
-
-################################################################################
-# P54: Motor temperature in 0.1 °C
-################################################################################
-record(ai, "$(P)$(M)-MOTOR-TEMP")
-{
-    field(DESC, "Motor temperature")
-    field(DTYP, "asynFloat64")
-    field(INP, "@asyn($(PORT), $(ADDR), $(TIMEOUT))MOTOR_TEMP")
-    field(SCAN, "$(SCAN)")
-    field(EGU, "°C")
-    field(PREC, 1)
-    field(FLNK, "$(P)$(M)-MOTOR-TEMP")
 }
 
 ################################################################################

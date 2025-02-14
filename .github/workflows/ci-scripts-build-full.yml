@@ -175,7 +175,7 @@ jobs:
             name: "Win2019 MSC-19, static"
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         submodules: true
     - name: Automatic core dumper analysis
