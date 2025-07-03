@@ -109,7 +109,7 @@ phytronIO::phytronIO(const char* szIOPortName, phytronController* pCtrl, phytron
  */
 int phytronIO::createIOcontroller(const char* szAsynPortName, const char* szPhytronPortName, bool bAnalog, epicsUInt8 byCardNr, epicsUInt8 byChannel, const char* szInitCommands)
 {
-  uint32_t i;
+  epicsUInt32 i;
   phytronIO::IOTYPE iType(bAnalog ? TYPE_GUESS_A : TYPE_GUESS_D);
   if (!szAsynPortName || !*szAsynPortName || !szPhytronPortName || !*szPhytronPortName)
     goto failed;
