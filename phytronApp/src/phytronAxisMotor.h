@@ -122,7 +122,7 @@ public:
   static int phytronBrakeOutput(const char* szControllerName, float fAxis, float fOutput, int bDisableMotor, double dEngageTime, double dReleaseTime);
   asynStatus configureBrake(float fOutput, bool bDisableMotor, double dEngageTime, double dReleaseTime);
 
-  char  axisModuleNo_[5];         ///<Used by sprintf to form commands
+  char  axisModuleNo_[6];         ///<Used by sprintf to form commands
   float brakeOutput_;             ///<<module>.<index> of digital output to drive for brake (or -1)
   int   disableMotor_;            ///<bit0: 0=keep motor enabled, 1=disable idle motor/enable when moved, bit1: 0=disabled, 1=enabled
   float brakeEngageTime_;         ///<time to engage brake (disable motor after this time in milliseconds)
