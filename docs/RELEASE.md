@@ -1,5 +1,24 @@
 # motorPhytron Releases
 
+## __R1-3 (2026-01-15)__
+R1-3 is a release based on the master branch.
+
+### Changes since R1-2
+
+#### New features
+* Pull request [#7](https://github.com/epics-motor/motorPhytron/pull/7): [Lutz Rossa](https://github.com/lrossa) added support for brake on digital output and faster controller polling
+* Pull request [#8](https://github.com/epics-motor/motorPhytron/pull/8): [Lutz Rossa](https://github.com/lrossa) added support for Phytron MCC-1/MCC-2 integrated stepper motor controllers and I/O support for all Phytron controllers
+
+#### Modifications to existing features
+* None
+
+#### Bug fixes
+* Pull request [#9](https://github.com/epics-motor/motorPhytron/pull/9): Fix for wrong module address for higher motor numbers from [Lutz Rossa](https://github.com/lrossa)
+* Pull request [#12](https://github.com/epics-motor/motorPhytron/pull/12): Use epicsUInt32 instead of uint32_t to fix linux build errors
+
+#### Continuous integration
+* Commit [ef5e553](https://github.com/epics-motor/motorPhytron/commit/ef5e5532470aad476725094a4457c7a53edd7117): Updated ci-scripts to v3.4.1
+
 ## __R1-2 (2023-04-13)__
 R1-2 is a release based on the master branch.
 
