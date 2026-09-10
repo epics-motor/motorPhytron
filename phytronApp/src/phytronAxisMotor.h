@@ -28,6 +28,7 @@ Lutz Rossa, Helmholtz-Zentrum Berlin fuer Materialien und Energy GmbH, 2021-2025
 #define controllerStatusString      "CONTROLLER_STATUS"
 #define controllerStatusResetString "CONTROLLER_STATUS_RESET"
 #define resetControllerString       "CONTROLLER_RESET"
+#define needIOCrestartString        "NEED_IOCRESTART"
 
 //Axis parameters
 #define axisStatusString            "AXIS_STATUS"
@@ -216,6 +217,7 @@ protected:
   int motorTemp_;
   int currentDelayTime_;
   int resetController_;
+  int needIOCrestart_;
   int axisReset_;
   int axisStatusReset_;
   int controllerStatusReset_;

@@ -135,6 +135,7 @@ phytronController::phytronController(phytronController::TYPE iCtrlType, const ch
   createParam(controllerStatusString,     asynParamInt32, &this->controllerStatus_);
   createParam(controllerStatusResetString,asynParamInt32, &this->controllerStatusReset_);
   createParam(resetControllerString,      asynParamInt32, &this->resetController_);
+  createParam(needIOCrestartString,       asynParamInt32, &this->needIOCrestart_);
 
   //Create Axis parameters
   createParam(axisStatusResetString,      asynParamInt32,   &this->axisStatusReset_);
@@ -293,8 +294,9 @@ asynStatus phytronController::readInt32(asynUser* pasynUser, epicsInt32* piValue
   asynMotorController::readInt32(pasynUser, piValue);
 
   //Check if this is a call to read a controller parameter
-  if(pasynUser->reason == resetController_ || pasynUser->reason == controllerStatusReset_){
-    //Called only on initialization of bo records RESET and RESET-STATUS
+  if (pasynUser->reason == resetController_ || pasynUser->reason == controllerStatusReset_ ||
+      pasynUser->reason == needIOCrestart_){
+    //Called only on initialization of bo records RESET, RESET-STATUS and NEED-IOCRESTART
     return asynSuccess;
   } else if (pasynUser->reason == controllerStatus_){
     phyStatus = sendPhytronCommand(std::string("ST"), sResponse);
@@ -383,6 +385,14 @@ asynStatus phytronController::writeInt32(asynUser* pasynUser, epicsInt32 iValue)
     phyStatus = sendPhytronCommand(std::string("STC"));
     CHECK_CTRL("writeInt32", "Reseting status", );
     return phyToAsyn(phyStatus);
+  } else if (pasynUser->reason == needIOCrestart_) {
+    epicsInt32 iLast(0);
+    getIntegerParam(0, needIOCrestart_, &iLast);
+    if (iValue == 2) iLast = 0; // clear
+    setIntegerParam(0, needIOCrestart_, 1 - iLast); // enforce "changed" flag
+    setIntegerParam(0, needIOCrestart_, iLast);
+    callParamCallbacks();
+    return asynSuccess; // ignore
   }
   /*
    * This is an axis request, find the axis
@@ -946,6 +956,8 @@ asynStatus phytronController::poll()
           {
             // detected a difference in cached value, the Phytron was restarted
             asynPrint(pasynUserSelf, ASYN_TRACE_ERROR, "detected a difference in cached fake-homed-bit value, did the Phytron a restart?\n");
+            setIntegerParam(0, needIOCrestart_, 1);
+            callParamCallbacks();
             if (allow_exit_on_error_)
               epicsExit(1);
             fake_homed_cache_[0] = static_cast<epicsUInt64>(floor(dTmp + 0.5));
