@@ -651,6 +651,26 @@ asynStatus phytronController::readOption(asynUser* pasynUser, const char* szKey,
       return asynSuccess;
     }
 
+    if (epicsStrCaseCmp(szKey, "axisStatusAndMask") == 0) {
+      // show axis status binary and mask
+      phytronAxis* pAxis(getAxis(pasynUser));
+      if (pAxis) {
+        snprintf(szValue, iMaxChars, "0x%08x", pAxis->axisStatusAndMask_);
+        szValue[iMaxChars - 1] = '\0';
+        return asynSuccess;
+      }
+    }
+
+    if (epicsStrCaseCmp(szKey, "axisStatusXorMask") == 0) {
+      // show axis status binary xor mask
+      phytronAxis* pAxis(getAxis(pasynUser));
+      if (pAxis) {
+        snprintf(szValue, iMaxChars, "0x%08x", pAxis->axisStatusXorMask_);
+        szValue[iMaxChars - 1] = '\0';
+        return asynSuccess;
+      }
+    }
+
     if (epicsStrCaseCmp(szKey, "allowExitOnError") == 0) {
       // configure "allow exit on error": after detection of this, the IOC exists and should be restarted by procServ
       snprintf(szValue, iMaxChars, "%s", allow_exit_on_error_ ? "true" : "false");
@@ -675,6 +695,7 @@ asynStatus phytronController::writeOption(asynUser* pasynUser, const char* szKey
   epicsInt64 iTmp(-2);
   int iAxisNo(0);
   size_t iLen;
+  bool bXor(false);
 
   if (!szKey || !szValue)
     goto finish;
@@ -805,6 +826,31 @@ asynStatus phytronController::writeOption(asynUser* pasynUser, const char* szKey
       allow_exit_on_error_ = false;
     else
       goto wrongValue_bool;
+
+    if ((epicsStrCaseCmp(szKey, "axisStatusAndMask") == 0) ||
+        (bXor = (epicsStrCaseCmp(szKey, "axisStatusXorMask") == 0))) {
+      // set axis status binary and/xor mask
+      getAddress(pasynUser, &iAxisNo);
+      epicsUInt32 dwNew(0);
+      if (iAxisNo > 0) pAxis = getAxis(iAxisNo);
+      if (!pAxis) {
+        epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
+                      "phytronController:writeOption(%s, %s) need valid axis", szKey, szValue);
+        goto wrongValue;
+      }
+      while (szValue[0] == '0' && szValue[1] >= '0' && szValue[1] <= '9') ++szValue;
+      if (epicsParseUInt32(szValue, &dwNew, 0, NULL) == 0) {
+        if (bXor)
+          pAxis->axisStatusXorMask_ = dwNew;
+        else
+          pAxis->axisStatusAndMask_ = dwNew;
+      }
+      else
+        epicsSnprintf(pasynUser->errorMessage, pasynUser->errorMessageSize,
+                      "phytronController:writeOption(%s, %s) wrong value",
+                      szKey, szValue);
+    }
+
     return asynSuccess;
   }
 
@@ -1298,7 +1344,7 @@ int phytronAxis::phytronCreateAxis(const char* szControllerName, int iModule, in
  */
 int phytronAxis::phytronBrakeOutput(const char* szControllerName, float fAxis, float fOutput, int bDisableMotor, double dEngageTime, double dReleaseTime)
 {
-  char szAxisNo[5];
+  char szAxisNo[6];
   uint32_t i, j;
   if (!szControllerName || !*szControllerName)
     goto failed;
@@ -1359,6 +1405,8 @@ phytronAxis::phytronAxis(phytronController *pC, int iAxisNo)
   , iPollMethod_(pollMethodDefault)
   , homeState_(0)
   , statusResetTime_(epicsINF)
+  , axisStatusAndMask_(0xFFFFFFFF)
+  , axisStatusXorMask_(0x00000000)
 {
   //Controller always supports encoder. Encoder enable/disable is set through UEIP
   setIntegerParam(pC_->motorStatusHasEncoder_, 1);
@@ -1931,7 +1979,7 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
   if (iPollMethod < 0) iPollMethod = pC_->iDefaultPollMethod_;
   int iAxisStatus(0), iMotIdx(-1), iEncIdx(-1), iStatIdx(-1), iIdleIdx(-1), iHighLimit(0), iLowLimit(0);
   size_t iRemoveCount(static_cast<size_t>(-1));
-  bool bResult(false), bMoving;
+  bool bResult(true), bMoving, bProblem(false);
   double dRatio;
   epicsInt32 iOldDone(0);
   switch (pC_->iCtrlType_)
@@ -2019,7 +2067,11 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
 
   // motor status
   if (iStatIdx >= 0)
+  {
     iAxisStatus = atoi(asValues[iStatIdx].c_str());
+    iAxisStatus &= axisStatusAndMask_;
+    iAxisStatus ^= axisStatusXorMask_;
+  }
 
   // idle/moving status
   pC_->getIntegerParam(axisNo_, pC_->motorStatusDone_, &iOldDone);
@@ -2040,7 +2092,7 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
   if (homeState_ >> 1) {
     // workaround for home on limit switch
     int iHomingType(-1);
-    bResult = !(iAxisStatus & 0xE800); // axis internal/power-stage/SFI/ENDAT error
+    bProblem = (iAxisStatus & 0xE800) != 0; // axis internal/power-stage/SFI/ENDAT error
     if (homeState_ & 1)
       iHighLimit = 0;
     else
@@ -2068,7 +2120,10 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
           // other problem was detected [manual SEm.n]
           int iMask((homeState_ & 1) ? 0xFA29 : 0xFA19);
           if (pC_->iCtrlType_ == phytronController::TYPE_PHYMOTION && (iAxisStatus & iMask) == 0x1208)
+          {
             bResult = (pC_->sendPhytronCommand(std::string("SEC") + &axisModuleNo_[1]) == phytronSuccess);
+            if (!bResult) bProblem = true;
+          }
           homeState_ = 0;
         }
         break;
@@ -2078,8 +2133,8 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
     }
   }
   else
-    bResult = !(iAxisStatus & 0xE800); // axis internal/power-stage/SFI/ENDAT error
-  if ((iAxisStatus & 0x1000) != 0 && statusResetTime_ < 0.) // axis limit-switch error
+    bProblem = (iAxisStatus & 0xE800) != 0; // axis internal/power-stage/SFI/ENDAT error
+  if ((iAxisStatus & 0xF800) != 0 && statusResetTime_ < 0.) // axis error or limit-switch
     statusResetTime_ = -statusResetTime_;
   setIntegerParam(pC_->motorStatusHighLimit_, iHighLimit);
   setIntegerParam(pC_->motorStatusLowLimit_,  iLowLimit);
@@ -2096,7 +2151,7 @@ bool phytronAxis::parseAnswer(std::vector<std::string> &asValues)
   setIntegerParam(pC_->axisStatus_, iAxisStatus); // Update the axis status record ($(P)$(M)_STATUS)
 
 finish:
-  setIntegerParam(pC_->motorStatusProblem_, bResult ? 0 : 1);
+  setIntegerParam(pC_->motorStatusProblem_, bProblem ? 1 : 0);
   callParamCallbacks();
   asValues.erase(asValues.begin(), asValues.begin() + iRemoveCount);
   return bResult;

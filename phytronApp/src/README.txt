@@ -685,3 +685,13 @@ controller and ADDR=1... means a specific axis, which was created using
   which will restart it.
   Allowed values are "true" or "false" (default).
 - asynShowOption(PORT, ADDR, "allowExitOnError") shows the actual value.
+
+- asynSetOption(PORT, ADDR, "axisStatusAndMask", ...) or
+  asynSetOption(PORT, ADDR, "axisStatusXorMask", ...)
+  This option allows to specify binary bit masks to pass, ignore or modify
+  specific bits of the axis status mask (e.g. ignore "internal axis error").
+  The axis status is read from axis, the AND mask is applied first, then the
+  XOR mask hits. The result is used as axis status defined by Phytron.
+- asynShowOption(PORT, ADDR, "axisStatusAndMask") or
+  asynShowOption(PORT, ADDR, "axisStatusXorMask")
+  show the actual values as hexadecimal value.

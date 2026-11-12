@@ -142,11 +142,13 @@ private:
   phytronStatus setAcceleration(std::vector<std::string>* pCmdList, double acceleration, int movementType);
   phytronStatus setBrakeOutput(std::vector<std::string>* pCmdList, bool bWantToMoveMotor);
 
-  phytronStatus lastStatus_;    ///< last Phytron status
-  int brakeReleased_;           ///< state of brake
-  enum pollMethod iPollMethod_; ///< individual poll method for this axis
-  int homeState_;               ///< state machine for work around homing to limit switches
-  float statusResetTime_;       ///< error state flag for SEC command: 0=off, <0: configured but not needed, >0: need status reset; 0s<n<0.001s=no wait, 0.001s<n<10s wait time
+  phytronStatus lastStatus_;      ///< last Phytron status
+  int brakeReleased_;             ///< state of brake
+  enum pollMethod iPollMethod_;   ///< individual poll method for this axis
+  int homeState_;                 ///< state machine for work around homing to limit switches
+  float statusResetTime_;         ///< error state flag for SEC command: 0=off, <0: configured but not needed, >0: need status reset; 0s<n<0.001s=no wait, 0.001s<n<10s wait time
+  epicsUInt32 axisStatusAndMask_; ///< binary and mask on axis status (allows to ignore bits)
+  epicsUInt32 axisStatusXorMask_; ///< binary xor mask on axis status (allows to swap/always-set ignored bits
 
 friend class phytronController;
 };
