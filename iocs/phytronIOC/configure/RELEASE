@@ -6,3 +6,4 @@
 -include $(TOP)/../../configure/RELEASE.local
 # Use phytronIOC's RELEASE.local when building outside motorPhytron
 -include $(TOP)/configure/RELEASE.local
+-include $(TOP)/../RELEASE.local

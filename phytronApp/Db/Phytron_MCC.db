@@ -29,6 +29,27 @@ record(bo, "$(P)$(M)-RESET-STATUS")
     field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))AXIS_STATUS_RESET")
 }
 
+################################################################################
+# signaling flag, that IOC should be restarted because hardware was reset
+################################################################################
+record(mbbo, "$(P)-NEED-IOCRESTART")
+{
+    field(DESC, "HW reset detected: need to restart IOC")
+    field(DTYP, "asynInt32")
+    field(OUT, "@asyn($(PORT), $(ADDR), $(TIMEOUT))NEED_IOCRESTART")
+    field(VAL, "0")
+    field(ZRVL, "0")
+    field(ONVL, "1")
+    field(TWVL, "2")
+    field(ZRST, "no")
+    field(ONST, "YES")
+    field(TWST, "clear")
+    field(UNSV, "INVALID")
+    field(NOBT, "2")
+    field(SCAN, "Passive")
+    info(asyn:READBACK, "1")
+}
+
 
 ################################################################################
 # Initialization of _SET records
